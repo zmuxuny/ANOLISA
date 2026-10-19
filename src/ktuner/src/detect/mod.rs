@@ -495,9 +495,9 @@ fn read_os_distro_from(paths: &[&str]) -> String {
     "Unknown".to_string()
 }
 
-/// Pure /etc/os-release parsing: PRETTY_NAME wins; otherwise NAME + VERSION;
-/// values are unquoted the way [`os_release_value`] reads them; anything else
-/// yields "Unknown" (the value shown in every check output).
+/// Pure /etc/os-release parsing: a nonempty PRETTY_NAME wins; otherwise NAME
+/// with an optional VERSION. Values are unquoted by [`os_release_value`];
+/// without a usable name, every check output shows "Unknown".
 fn parse_os_release(content: &str) -> String {
     let mut pretty_name = None;
     let mut name = None;
@@ -511,11 +511,14 @@ fn parse_os_release(content: &str) -> String {
             version = Some(os_release_value(val));
         }
     }
-    if let Some(pn) = pretty_name {
+    if let Some(pn) = pretty_name.filter(|value| !value.is_empty()) {
         return pn;
     }
-    if let (Some(n), Some(v)) = (name, version) {
-        return format!("{n} {v}");
+    if let Some(n) = name.filter(|value| !value.is_empty()) {
+        return match version.filter(|value| !value.is_empty()) {
+            Some(v) => format!("{n} {v}"),
+            None => n,
+        };
     }
     "Unknown".to_string()
 }
@@ -2840,11 +2843,47 @@ mod tests {
             parse_os_release("NAME=\"Alinux\"\nVERSION=\"3\"\n"),
             "Alinux 3"
         );
-        // NAME alone (no VERSION) is not enough.
-        assert_eq!(parse_os_release("NAME=\"Alinux\"\n"), "Unknown");
+        // VERSION is optional; NAME alone still identifies the distribution.
+        assert_eq!(parse_os_release("NAME=\"Alinux\"\n"), "Alinux");
         // Empty or unrelated content.
         assert_eq!(parse_os_release(""), "Unknown");
         assert_eq!(parse_os_release("ID=alinux\nHOME_URL=\"x\"\n"), "Unknown");
+    }
+
+    #[test]
+    fn parse_os_release_keeps_name_without_optional_version() {
+        for (content, expected) in [
+            ("NAME=Alinux\n", "Alinux"),
+            ("NAME='Example Linux'\n", "Example Linux"),
+            ("NAME=\"Example \\\"Edge\\\"\"\n", "Example \"Edge\""),
+            ("NAME=Alinux\nVERSION=\"\"\n", "Alinux"),
+        ] {
+            assert_eq!(parse_os_release(content), expected, "{content}");
+        }
+    }
+
+    #[test]
+    fn parse_os_release_empty_pretty_name_uses_available_name() {
+        assert_eq!(
+            parse_os_release("PRETTY_NAME=\"\"\nNAME=Alinux\nVERSION=3\n"),
+            "Alinux 3"
+        );
+        assert_eq!(
+            parse_os_release("PRETTY_NAME=\"\"\nNAME='Example Linux'\n"),
+            "Example Linux"
+        );
+    }
+
+    #[test]
+    fn parse_os_release_without_a_nonempty_name_is_unknown() {
+        for content in [
+            "NAME=\"\"\n",
+            "NAME=\"\"\nVERSION=3\n",
+            "VERSION=3\n",
+            "PRETTY_NAME=\"\"\n",
+        ] {
+            assert_eq!(parse_os_release(content), "Unknown", "{content}");
+        }
     }
 
     #[test]
@@ -2893,6 +2932,10 @@ mod tests {
         // The /etc file takes precedence whenever it exists.
         fs::write(&etc, "PRETTY_NAME=\"Local 1\"\n").unwrap();
         assert_eq!(read_os_distro_from(&paths), "Local 1");
+
+        // A valid minimal file can identify a distribution without a version.
+        fs::write(&etc, "NAME='Example Linux'\n").unwrap();
+        assert_eq!(read_os_distro_from(&paths), "Example Linux");
 
         fs::remove_file(&usr_lib).unwrap();
         fs::remove_file(&etc).unwrap();
