@@ -314,14 +314,13 @@ def serve_h2(sock: socket.socket, settings: Any, verbose: bool) -> None:
     """Serve HTTP/2 streams using python-h2, which keeps h2load real end-to-end."""
     from h2.config import H2Configuration
     from h2.connection import H2Connection
-    from h2.events import DataReceived, RequestReceived, StreamEnded
+    from h2.events import DataReceived, RequestReceived, StreamEnded, StreamReset
 
     connection = H2Connection(config=H2Configuration(client_side=False, header_encoding="utf-8"))
     connection.initiate_connection()
     sock.sendall(connection.data_to_send())
     bodies: dict[int, bytearray] = {}
-    paths: dict[int, str] = {}
-    run_ids: dict[int, str | None] = {}
+    headers_by_stream: dict[int, dict[str, str]] = {}
 
     def send_stream_data(stream_id: int, frame: bytes, *, end_stream: bool = False) -> None:
         """Send one payload honoring h2 flow control and the frame-size limit.
@@ -353,21 +352,23 @@ def serve_h2(sock: socket.socket, settings: Any, verbose: bool) -> None:
     def handle_events(events: list[Any]) -> None:
         for event in events:
             if isinstance(event, RequestReceived):
-                headers = dict(event.headers)
-                paths[event.stream_id] = headers.get(":path", "")
-                run_ids[event.stream_id] = header_value(headers, "X-Benchmark-Run-ID")
+                headers_by_stream[event.stream_id] = dict(event.headers)
                 bodies[event.stream_id] = bytearray()
             elif isinstance(event, DataReceived):
                 bodies.setdefault(event.stream_id, bytearray()).extend(event.data)
                 connection.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+            elif isinstance(event, StreamReset):
+                bodies.pop(event.stream_id, None)
+                headers_by_stream.pop(event.stream_id, None)
             elif isinstance(event, StreamEnded):
-                path = paths.pop(event.stream_id, "")
-                run_id = run_ids.pop(event.stream_id, None)
+                headers = headers_by_stream.pop(event.stream_id, {})
+                path = headers.get(":path", "")
+                run_id = header_value(headers, "X-Benchmark-Run-ID")
                 body = bytes(bodies.pop(event.stream_id, b""))
                 if path == "/healthz":
                     send_h2_body(connection, event.stream_id, b"OK", "text/plain")
                 elif path in ENDPOINTS:
-                    rid = request_id_from(body, {})
+                    rid = request_id_from(body, headers)
                     record_request(settings, run_id, rid, HTTPStatus.OK)
                     response = response_events(path, rid, settings.chunks, settings.chunk_bytes)
                     if settings.sse:
