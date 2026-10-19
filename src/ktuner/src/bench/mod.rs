@@ -242,18 +242,22 @@ fn bench_io_path(dir: &str, name: &str) -> String {
 }
 
 fn bench_io_latency() -> Result<BenchResult> {
+    bench_io_latency_in(&bench_io_dir())
+}
+
+fn bench_io_latency_in(dir: &str) -> Result<BenchResult> {
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
-    let path = bench_io_path(&bench_io_dir(), "ktuner_io_bench");
+    let path = bench_io_path(dir, "ktuner_io_bench");
     let path = path.as_str();
     let iterations = 1000u64;
 
     let mut file = OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        // Reserve our scratch path atomically; never truncate an existing file or link.
+        .create_new(true)
         .custom_flags(libc::O_SYNC)
         .open(path)?;
 
@@ -282,10 +286,14 @@ fn bench_io_latency() -> Result<BenchResult> {
 }
 
 fn bench_io_throughput() -> Result<BenchResult> {
+    bench_io_throughput_in(&bench_io_dir())
+}
+
+fn bench_io_throughput_in(dir: &str) -> Result<BenchResult> {
     use std::fs::OpenOptions;
     use std::io::Write;
 
-    let path = bench_io_path(&bench_io_dir(), "ktuner_io_tput_bench");
+    let path = bench_io_path(dir, "ktuner_io_tput_bench");
     let path = path.as_str();
     let block_size = 1024 * 1024; // 1MB blocks
     let total_size = 128 * 1024 * 1024; // 128MB total
@@ -295,8 +303,8 @@ fn bench_io_throughput() -> Result<BenchResult> {
 
     let mut file = OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        // Reserve our scratch path atomically; never truncate an existing file or link.
+        .create_new(true)
         .open(path)?;
 
     let _cleanup = RemoveOnDrop(path);
@@ -423,5 +431,94 @@ mod tests {
         assert!(latency.contains(&std::process::id().to_string()));
         assert_eq!(latency, bench_io_path(&dir, "ktuner_io_bench"));
         assert!(std::path::Path::new(&latency).parent() == Some(std::path::Path::new(&dir)));
+    }
+}
+
+#[cfg(test)]
+mod scratch_file_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct TestDirectory(PathBuf);
+    impl TestDirectory {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ktuner-exclusive-scratch-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&path).expect("create private test directory");
+            Self(path)
+        }
+    }
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).expect("remove private test directory");
+        }
+    }
+
+    type IoBench = fn(&str) -> Result<BenchResult>;
+    const BENCHES: &[(&str, IoBench)] = &[
+        ("ktuner_io_bench", bench_io_latency_in),
+        ("ktuner_io_tput_bench", bench_io_throughput_in),
+    ];
+
+    fn scratch(root: &Path, name: &str) -> PathBuf {
+        PathBuf::from(bench_io_path(root.to_str().unwrap(), name))
+    }
+
+    #[test]
+    fn existing_scratch_files_are_not_truncated_or_removed() {
+        for &(name, bench) in BENCHES {
+            let root = TestDirectory::new();
+            let path = scratch(&root.0, name);
+            std::fs::write(&path, b"keep existing data").unwrap();
+            let result = bench(root.0.to_str().unwrap());
+            assert!(result.is_err(), "{name} reused an existing file");
+            assert_eq!(std::fs::read(path).unwrap(), b"keep existing data");
+        }
+    }
+
+    #[test]
+    fn scratch_symlinks_cannot_redirect_benchmark_writes() {
+        for &(name, bench) in BENCHES {
+            let root = TestDirectory::new();
+            let target = root.0.join("unrelated-data");
+            std::fs::write(&target, b"preserve target bytes").unwrap();
+            let path = scratch(&root.0, name);
+            std::os::unix::fs::symlink(&target, &path).unwrap();
+            let result = bench(root.0.to_str().unwrap());
+            assert!(result.is_err(), "{name} followed a scratch symlink");
+            assert_eq!(std::fs::read(target).unwrap(), b"preserve target bytes");
+            assert!(path.symlink_metadata().unwrap().file_type().is_symlink());
+        }
+    }
+
+    #[test]
+    fn dangling_scratch_symlinks_do_not_create_their_targets() {
+        for &(name, bench) in BENCHES {
+            let root = TestDirectory::new();
+            let target = root.0.join("must-not-be-created");
+            let path = scratch(&root.0, name);
+            std::os::unix::fs::symlink(&target, &path).unwrap();
+            let result = bench(root.0.to_str().unwrap());
+            assert!(result.is_err(), "{name} followed a dangling symlink");
+            assert!(!target.exists());
+            assert!(path.symlink_metadata().unwrap().file_type().is_symlink());
+        }
+    }
+
+    #[test]
+    fn fresh_scratch_files_still_complete_and_are_cleaned_up() {
+        for &(name, bench) in BENCHES {
+            let root = TestDirectory::new();
+            let result = bench(root.0.to_str().unwrap()).unwrap();
+            assert!(result.value.is_finite());
+            assert!(result.value >= 0.0);
+            assert!(!scratch(&root.0, name).exists());
+            assert_eq!(std::fs::read_dir(&root.0).unwrap().count(), 0);
+        }
     }
 }
