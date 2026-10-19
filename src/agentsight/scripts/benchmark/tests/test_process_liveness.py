@@ -7,8 +7,8 @@ import sys
 import tempfile
 import time
 import unittest
-from pathlib import Path
 from contextlib import contextmanager
+from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "single_run"))
@@ -51,13 +51,20 @@ class ProcessLivenessTests(unittest.TestCase):
         with exited_child() as pid, tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "fault-results.json"
             argv = [
-                "fault_injector.py", "--watch-pid", str(pid),
-                "--oversized-bytes", "8", "--output", str(output),
+                "fault_injector.py",
+                "--watch-pid",
+                str(pid),
+                "--oversized-bytes",
+                "8",
+                "--output",
+                str(output),
             ]
             with (
                 mock.patch.object(sys, "argv", argv),
                 mock.patch.object(fault_injector, "exchange", return_value="closed"),
-                mock.patch.object(fault_injector, "tls_socket", return_value=Connection()),
+                mock.patch.object(
+                    fault_injector, "tls_socket", return_value=Connection()
+                ),
                 mock.patch.object(fault_injector, "health_check", return_value=True),
                 mock.patch("builtins.print"),
             ):
@@ -82,7 +89,8 @@ class ProcessLivenessTests(unittest.TestCase):
     def test_procfs_state_parser_handles_terminal_and_live_states(self):
         for state in ("Z", "X", "x", "R", "S", "D", "T", "t", "I"):
             with self.subTest(state=state), mock.patch.object(
-                Path, "read_text",
+                Path,
+                "read_text",
                 return_value=(
                     f"Name:\ttest\nThreads:\t1\nState:\t{state} (state)\n"
                     "VmRSS:\t20 kB\n"
