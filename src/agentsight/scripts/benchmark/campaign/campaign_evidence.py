@@ -136,7 +136,12 @@ def resource_samples(run_path: Path, field: str) -> list[tuple[float, float]]:
     opener = gzip.open if path.suffix == ".gz" else Path.open
     with opener(path, mode="rt", encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
-            sample_time = timestamp(row.get("timestamp"))
+            # Keep one clock epoch; only legacy CSVs lack the monotonic column.
+            sample_time = (
+                finite_float(row["monotonic_timestamp"])
+                if "monotonic_timestamp" in row
+                else timestamp(row.get("timestamp"))
+            )
             value = finite_float(row.get(field))
             if sample_time is not None and value is not None:
                 samples.append((sample_time, value))

@@ -123,7 +123,8 @@ def summarize_resources(path: Path | None) -> dict[str, dict[str, float | None]]
         name: [] for name in RESOURCE_METRICS
     }
     for row in metric_rows(path):
-        timestamp = numeric(row.get("timestamp"))
+        # Keep one clock epoch; only legacy CSVs lack the monotonic column.
+        timestamp = numeric(row.get("monotonic_timestamp", row.get("timestamp")))
         if timestamp is None:
             continue
         for name in RESOURCE_METRICS:
