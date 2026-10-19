@@ -724,7 +724,7 @@ class OpenClawExternalAgent(BaseAgent):
         skill_path = os.path.join(task_dir, "skill.md")
         if os.path.isfile(skill_path):
             try:
-                with open(skill_path) as f:
+                with open(skill_path, encoding="utf-8") as f:
                     content = f.read().strip()
                 if content:
                     if len(content) > self._MAX_SKILL_HINT_CHARS:
@@ -765,7 +765,7 @@ class OpenClawExternalAgent(BaseAgent):
     @staticmethod
     def _auto_skill_from_solve(solve_path: str) -> str:
         """Auto-generate a skill hint from a solve.sh file."""
-        with open(solve_path) as f:
+        with open(solve_path, encoding="utf-8") as f:
             raw = f.read()
 
         lines = raw.split("\n")
