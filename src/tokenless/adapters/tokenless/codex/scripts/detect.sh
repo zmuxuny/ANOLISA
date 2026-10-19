@@ -51,11 +51,24 @@ if command -v jq &>/dev/null; then
   jq -n --arg ver "$VERSION_CLEAN" --arg p "$TOKENLESS_BIN" \
     '{installed: true, version: $ver, path: $p}'
 else
+  # Escape JSON strings without adding a fallback runtime dependency.
+  json_escape() {
+    local value="$1" code character replacement
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    for ((code = 1; code < 32; code++)); do
+      printf -v character '\\%03o' "$code"
+      printf -v character '%b' "$character"
+      printf -v replacement '\\u%04x' "$code"
+      value="${value//"$character"/"$replacement"}"
+    done
+    printf '%s' "$value"
+  }
   cat <<EOF
 {
   "installed": true,
-  "version": "$VERSION_CLEAN",
-  "path": "$TOKENLESS_BIN"
+  "version": "$(json_escape "$VERSION_CLEAN")",
+  "path": "$(json_escape "$TOKENLESS_BIN")"
 }
 EOF
 fi
