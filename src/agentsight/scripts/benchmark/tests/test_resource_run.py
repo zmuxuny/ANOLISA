@@ -835,10 +835,20 @@ assert Path("../../staged").read_text() in ("before", "staged and unstaged")
     assert_reaped(output)
 
 
-def test_snapshot_contains_deletions_and_untracked_without_staging(tmp_path: Path) -> None:
+@pytest.mark.parametrize("output_name", [None, "output", "output[1]", "output*", "output?"])
+def test_snapshot_contains_deletions_and_untracked_without_staging(
+    tmp_path: Path, output_name: str | None
+) -> None:
     repo = fixture_repo(tmp_path)
-    output = tmp_path / "output"
+    output = repo / output_name if output_name else tmp_path / "outside-output"
     output.mkdir()
+    (output / "result.json").write_text("benchmark artifact", encoding="utf-8")
+    # A glob interpretation of output[1], output*, or output? would exclude
+    # this unrelated source file while potentially retaining the output itself.
+    (repo / "output1").write_text("source input", encoding="utf-8")
+    index = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "index"
+    index_before = index.read_bytes()
+    head_before = git(repo, "rev-parse", "HEAD")
     inputs = resource_inputs.Inputs(repo, output)
     try:
         source = inputs.prepare("after", "working-tree", None)
@@ -846,8 +856,15 @@ def test_snapshot_contains_deletions_and_untracked_without_staging(tmp_path: Pat
         assert not (snapshot / "deleted").exists()
         assert (snapshot / "untracked").read_text() == "untracked"
         assert (snapshot / "staged").read_text() == "staged and unstaged"
+        assert (snapshot / "output1").read_text() == "source input"
+        if output_name:
+            assert not (snapshot / output_name).exists()
+        assert (output / "result.json").read_text() == "benchmark artifact"
+        assert git(repo, "rev-parse", "HEAD") == head_before
+        assert index.read_bytes() == index_before
     finally:
         inputs.close()
+    assert git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 
 def test_build_failure_removes_worktrees_and_reports_reason(

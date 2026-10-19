@@ -194,7 +194,9 @@ class Inputs:
             paths = ["."]
             if self.output.is_relative_to(self.repo):
                 relative = self.output.relative_to(self.repo).as_posix()
-                paths.extend([f":(exclude){relative}", f":(exclude){relative}/**"])
+                # This is a directory name, not a pattern; literal exclusion
+                # also covers its descendants without matching sibling sources.
+                paths.append(f":(exclude,literal){relative}")
             self.git("add", "-A", "--", *paths, env=env)
             snapshot = self.git("write-tree", env=env)
             dirty = snapshot != tree
