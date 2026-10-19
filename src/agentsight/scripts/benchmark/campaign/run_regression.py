@@ -245,6 +245,8 @@ def main() -> int:
                 "coverage",
                 "run",
                 "--branch",
+                # Discover wholly unexecuted files as well as imported code.
+                f"--source={BENCHMARK_PATH / 'single_run'},{BENCHMARK_PATH / 'campaign'}",
                 f"--data-file={coverage_data}",
                 "-m",
                 "pytest",
