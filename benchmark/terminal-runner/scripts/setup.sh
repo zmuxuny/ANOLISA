@@ -100,7 +100,11 @@ if [ ! -d "$VENV_DIR" ]; then
         conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
         conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r  2>/dev/null || true
 
-        if ! conda env list | grep -q "^${CONDA_ENV_NAME} "; then
+        # Compare the name literally and consume the full list under pipefail.
+        if ! conda env list | CONDA_ENV_NAME="$CONDA_ENV_NAME" awk '
+            $1 == ENVIRON["CONDA_ENV_NAME"] { found = 1 }
+            END { exit !found }
+        '; then
             echo "==> Creating conda env '$CONDA_ENV_NAME' with Python 3.12 ..."
             conda create -y -n "$CONDA_ENV_NAME" python=3.12
         fi
