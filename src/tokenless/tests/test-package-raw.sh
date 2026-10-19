@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$ROOT/tests/test_verify_binaries.py"
 TMP="$(mktemp -d /tmp/tokenless-raw-package-test.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -230,6 +231,32 @@ if run_pack linux aarch64 "$LINUX_X64" "$TMP/mislabeled" 2>/dev/null; then
     echo "ERROR: mislabeled x86_64 binaries unexpectedly passed as aarch64" >&2
     exit 1
 fi
+# A matching architecture field does not make a partial executable header valid.
+for fixture in elf macho; do
+    truncated_bins="$TMP/truncated-$fixture"
+    mkdir -p "$truncated_bins"
+    if [ "$fixture" = elf ]; then
+        original_bins="$LINUX_X64"
+        target_os=linux
+        target_arch=x86_64
+        header_bytes=20
+    else
+        original_bins="$MACOS_ARM64"
+        target_os=macos
+        target_arch=aarch64
+        header_bytes=8
+    fi
+    head -c "$header_bytes" "$original_bins/tokenless" > "$truncated_bins/tokenless"
+    cp "$original_bins/rtk" "$truncated_bins/rtk"
+    chmod 0755 "$truncated_bins/tokenless" "$truncated_bins/rtk"
+    if run_pack "$target_os" "$target_arch" "$truncated_bins" \
+            "$TMP/truncated-output-$fixture" >"$TMP/truncated-$fixture.out" 2>&1; then
+        echo "ERROR: a truncated $fixture header unexpectedly passed packaging" >&2
+        exit 1
+    fi
+    grep -Fq 'header is truncated' "$TMP/truncated-$fixture.out"
+done
+
 for framework in opencode qwenwork; do
     if TOKENLESS_SOURCE_DIR="$SOURCE" \
         RAW_CONTRACT="$TMP/contract-missing-$framework.toml" \

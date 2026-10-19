@@ -7,7 +7,6 @@ import argparse
 import struct
 from pathlib import Path
 
-
 ELF_MACHINES = {
     "x86_64": 62,
     "aarch64": 183,
@@ -22,7 +21,9 @@ def verify_elf(path: Path, arch: str) -> None:
     """Verify one 64-bit little-endian ELF binary's architecture."""
     with path.open("rb") as stream:
         header = stream.read(64)
-    if len(header) < 20 or header[:4] != b"\x7fELF":
+    if len(header) < 64:
+        raise ValueError("ELF header is truncated")
+    if header[:4] != b"\x7fELF":
         raise ValueError("not an ELF binary")
     if header[4] != 2:
         raise ValueError("not a 64-bit ELF binary")
@@ -37,7 +38,7 @@ def verify_macho(path: Path, arch: str) -> None:
     """Verify one thin 64-bit Mach-O binary's architecture."""
     with path.open("rb") as stream:
         header = stream.read(32)
-    if len(header) < 8:
+    if len(header) < 32:
         raise ValueError("Mach-O header is truncated")
     if header[:4] == b"\xcf\xfa\xed\xfe":
         byte_order = "<"
