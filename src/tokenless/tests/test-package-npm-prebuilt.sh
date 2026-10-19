@@ -104,6 +104,36 @@ for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
     make_binaries "$target"
 done
 
+# An architecture tag alone is not a complete executable header. Exercise the
+# actual packaging boundary, not a duplicate format checker.
+for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+    if [[ "$target" == linux-* ]]; then
+        lengths="20 63"
+    else
+        lengths="8 31"
+    fi
+    for length in $lengths; do
+        python3 - "$PREBUILT/$target/tokenless" "$length" <<'PYCODE'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_bytes(path.read_bytes()[:int(sys.argv[2])])
+PYCODE
+        if node "$ROOT/npm/scripts/package-npm.js" --target "$target" \
+            >"$TMP/truncated.out" 2>&1; then
+            echo "ERROR: npm packer accepted truncated $target header ($length bytes)" >&2
+            exit 1
+        fi
+        if ! grep -Fq 'header is truncated' "$TMP/truncated.out"; then
+            cat "$TMP/truncated.out" >&2
+            echo "ERROR: expected a truncated-header diagnostic for $target ($length bytes)" >&2
+            exit 1
+        fi
+        make_binaries "$target"
+    done
+done
+
 cp "$PREBUILT/linux-x64/"* "$PREBUILT/linux-arm64/"
 if node "$ROOT/npm/scripts/package-npm.js" --target linux-arm64 \
     >"$TMP/mismatch.out" 2>&1; then

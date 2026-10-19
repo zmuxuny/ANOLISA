@@ -232,7 +232,8 @@ function verifyBinaryFormat(target, name, path) {
   const header = readHeader(path);
   if (target.binary_os === 'linux') {
     const elfMagic = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
-    if (header.length < 20 || !header.subarray(0, 4).equals(elfMagic)) {
+    if (header.length < 64) throw new Error(`${name} ELF header is truncated: ${path}`);
+    if (!header.subarray(0, 4).equals(elfMagic)) {
       throw new Error(`${name} is not an ELF binary: ${path}`);
     }
     if (header[4] !== 2 || header[5] !== 1) {
@@ -246,7 +247,7 @@ function verifyBinaryFormat(target, name, path) {
     return;
   }
 
-  if (header.length < 8) throw new Error(`${name} Mach-O header is truncated: ${path}`);
+  if (header.length < 32) throw new Error(`${name} Mach-O header is truncated: ${path}`);
   const littleEndian = header.subarray(0, 4).equals(Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
   const bigEndian = header.subarray(0, 4).equals(Buffer.from([0xfe, 0xed, 0xfa, 0xcf]));
   if (!littleEndian && !bigEndian) {
