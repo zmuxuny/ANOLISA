@@ -294,6 +294,10 @@ sudo agentsight discover                                   # 跑一次自己的 
 会依次尝试符号表、字节模式匹配，最后才查这张表。如果新版 Codex 采集不到数据，用
 `src/agentsight/scripts/extract-codex-offsets.py` 重新生成条目。
 
+表中保存的是可执行文件的**文件偏移量**，不是 `nm` 输出的虚拟地址。生成脚本通过 ELF 加载段换算
+符号地址；若符号没有对应的文件内可执行字节，则拒绝生成条目。对于虚拟地址与文件偏移量不一致的
+二进制文件，请重新生成旧条目；配置表格式不变。
+
 ## schema_version 与升级
 
 `schema_version`（当前为 `5`）标记配置格式版本。启动时 AgentSight 会与内置版本比对：

@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 from typing import Dict, Optional
@@ -83,7 +84,7 @@ def detect_codex_version(path: str) -> Optional[str]:
 
 
 def nm_symbols(binary: str) -> Dict[str, int]:
-    """Return a {symbol_name: file_offset} map for defined text symbols.
+    """Return a {symbol_name: virtual_address} map for defined text symbols.
 
     Tries the regular symbol table first (`nm --defined-only`), then falls
     back to the dynamic symbol table (`nm -D --defined-only`) for release
@@ -118,6 +119,64 @@ def nm_symbols(binary: str) -> Dict[str, int]:
                 continue
             syms.setdefault(name, addr)
     return syms
+
+
+def file_offsets(binary: str, offsets: dict) -> dict:
+    """Translate selected symbol addresses through file-backed executable loads.
+
+    nm reports ELF virtual addresses, while an offset-based uprobe takes an
+    offset in the file. They coincide for some PIE layouts, but not in general.
+    Read only the ELF/program headers; no third-party ELF parser is required.
+    """
+    with open(binary, "rb") as stream:
+        size = os.fstat(stream.fileno()).st_size
+        ident = stream.read(16)
+        if len(ident) != 16 or ident[:4] != b"\x7fELF" or ident[6] != 1:
+            raise ValueError("invalid ELF identification")
+        if ident[4] not in (1, 2) or ident[5] not in (1, 2):
+            raise ValueError("unsupported ELF class or byte order")
+        endian = "<" if ident[5] == 1 else ">"
+        is_64 = ident[4] == 2
+        header_format = endian + ("HHIQQQIHHHHHH" if is_64 else "HHIIIIIHHHHHH")
+        header_size = struct.calcsize(header_format)
+        header = stream.read(header_size)
+        if len(header) != header_size:
+            raise ValueError("truncated ELF header")
+        fields = struct.unpack(header_format, header)
+        if fields[0] not in (2, 3):
+            raise ValueError("ELF is not an executable or shared object")
+        phoff, phentsize, phnum = fields[4], fields[8], fields[9]
+        ph_format = endian + ("IIQQQQQQ" if is_64 else "IIIIIIII")
+        ph_size = struct.calcsize(ph_format)
+        if (phnum == 0 or phnum == 0xFFFF or phentsize < ph_size
+                or phoff < 16 + header_size or phoff + phentsize * phnum > size):
+            raise ValueError("invalid or truncated ELF program headers")
+        segments = []
+        for index in range(phnum):
+            stream.seek(phoff + index * phentsize)
+            entry = stream.read(ph_size)
+            if len(entry) != ph_size:
+                raise ValueError("truncated ELF program header")
+            ph = struct.unpack(ph_format, entry)
+            if is_64:
+                kind, flags, offset, address, _, filesz, memsz, _ = ph
+            else:
+                kind, offset, address, _, filesz, memsz, flags, _ = ph
+            if kind == 1 and flags & 1:  # PT_LOAD and PF_X
+                if filesz > memsz or offset + filesz > size:
+                    raise ValueError("executable ELF segment exceeds file bounds")
+                segments.append((address, offset, filesz))
+
+    translated = dict(offsets)
+    for name in ("ssl_write", "ssl_read", "ssl_do_handshake"):
+        address = offsets[name]
+        for start, offset, length in segments:
+            if start <= address < start + length:
+                translated[name] = offset + address - start
+                break
+        else:
+            raise ValueError(f"{name} is outside file-backed executable segments")
+    return translated
 
 
 def pick_offsets(syms: Dict[str, int]) -> Optional[dict]:
@@ -171,6 +230,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 3
+
+    try:
+        offsets = file_offsets(binary, offsets)
+    except (OSError, ValueError) as error:
+        print(f"error: cannot resolve SSL file offsets: {error}", file=sys.stderr)
+        return 4
 
     entry = {
         "codex_version": detect_codex_version(binary) or "unknown",

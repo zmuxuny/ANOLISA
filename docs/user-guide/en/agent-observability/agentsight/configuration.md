@@ -313,6 +313,11 @@ library and exports no symbols. AgentSight tries the symbol table, then byte-pat
 this table. If a new Codex release is not captured, regenerate the entry with
 `src/agentsight/scripts/extract-codex-offsets.py`.
 
+The table contains executable **file offsets**, not the virtual addresses printed by `nm`.
+The generator translates symbols through the ELF load segments and refuses an entry if a symbol
+is not backed by executable bytes in the file. Regenerate older entries made from a binary whose
+virtual addresses differ from its file offsets; the table format is unchanged.
+
 ## schema_version and upgrades
 
 `schema_version` (currently `5`) marks the config format. On start, AgentSight compares it with the
