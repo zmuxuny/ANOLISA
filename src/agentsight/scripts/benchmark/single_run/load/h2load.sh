@@ -12,7 +12,10 @@ fi
 : "${PAYLOAD_FILE:?set PAYLOAD_FILE}"
 
 requests=$((QPS * DURATION))
-h2load -n"$requests" \
-    --clients="${CLIENTS:-100}" --max-concurrent-streams="${STREAMS:-10}" \
+clients="${CLIENTS:-100}"
+# h2load applies --rps per client; distribute the requested aggregate QPS.
+rps="$(LC_ALL=C awk -v qps="$QPS" -v clients="$clients" 'BEGIN { printf "%.17g", qps / clients }')"
+h2load -n"$requests" --rps="$rps" \
+    --clients="$clients" --max-concurrent-streams="${STREAMS:-10}" \
     --threads="${THREADS:-1}" --header="content-type: application/json" \
     --data="$PAYLOAD_FILE" "$BASE_URL/v1/chat/completions"
