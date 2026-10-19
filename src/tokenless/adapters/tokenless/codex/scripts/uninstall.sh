@@ -124,11 +124,12 @@ if [[ -n "$CODEX_BIN" ]]; then
         DEREGISTER_FAILED=1
     fi
     if market_listing="$(codex_list plugin marketplace list)"; then
-        if printf '%s\n' "$market_listing" | grep -q "^${MARKETPLACE_NAME}[[:space:]]"; then
+        # Consume all rows so pipefail sees the producer status, not a grep-induced SIGPIPE.
+        if printf '%s\n' "$market_listing" | grep -c "^${MARKETPLACE_NAME}[[:space:]]" >/dev/null; then
             echo "[tokenless] Removing marketplace '${MARKETPLACE_NAME}'..."
             "$CODEX_BIN" plugin marketplace remove "$MARKETPLACE_NAME" 2>&1 || true
             if after_market="$(codex_list plugin marketplace list)"; then
-                if printf '%s\n' "$after_market" | grep -q "^${MARKETPLACE_NAME}[[:space:]]"; then
+                if printf '%s\n' "$after_market" | grep -c "^${MARKETPLACE_NAME}[[:space:]]" >/dev/null; then
                     echo "[tokenless] ERROR: codex still lists the '${MARKETPLACE_NAME}' marketplace." >&2
                     DEREGISTER_FAILED=1
                 fi

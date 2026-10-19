@@ -457,6 +457,7 @@ test-adapters: build-openclaw-plugin build-dsh-plugin test-npm-package
 	bash tests/test-claude-code-adapter-install.sh
 	@echo "==> Testing Qwen Code adapter installer..."
 	python3 tests/test_qwencode_install.py
+	python3 tests/test_adapter_listing_pipes.py
 	@echo "==> Testing OpenCode adapter..."
 	bash tests/test-opencode-adapter-install.sh
 	node tests/test-opencode-plugin.mjs

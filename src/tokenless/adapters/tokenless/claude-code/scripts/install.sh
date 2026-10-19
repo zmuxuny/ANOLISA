@@ -92,8 +92,9 @@ fi
 # manifest, settings.json write error) instead of being swallowed as
 # "already registered".
 echo "[${COMPONENT}] registering marketplace '${MARKETPLACE_NAME}' from ${PLUGIN_SRC}..."
+# Consume all rows so pipefail sees the producer status, not a grep-induced SIGPIPE.
 if "$CLAUDE_BIN" plugin marketplace list 2>/dev/null \
-       | grep -qE "(^|[[:space:]])${MARKETPLACE_NAME}([[:space:]]|$)"; then
+       | grep -cE "(^|[[:space:]])${MARKETPLACE_NAME}([[:space:]]|$)" >/dev/null; then
     echo "[${COMPONENT}] marketplace '${MARKETPLACE_NAME}' already registered"
 else
     "$CLAUDE_BIN" plugin marketplace add "$PLUGIN_SRC" \

@@ -156,7 +156,8 @@ claude_plugin_listed() {
     if ! listing="$("$CLAUDE_BIN" plugin list 2>&1)"; then
         return 1
     fi
-    if printf '%s\n' "$listing" | grep -qF "$PLUGIN_ID"; then
+    # Consume all rows so pipefail sees the producer status, not a grep-induced SIGPIPE.
+    if printf '%s\n' "$listing" | grep -cF "$PLUGIN_ID" >/dev/null; then
         return 0
     fi
     return 2

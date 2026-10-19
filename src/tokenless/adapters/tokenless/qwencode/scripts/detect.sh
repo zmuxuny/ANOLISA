@@ -54,7 +54,8 @@ else
 fi
 
 if [ -n "$QWEN_BIN" ] && [ -x "$QWEN_BIN" ]; then
-    if "$QWEN_BIN" extensions list 2>/dev/null | grep -qE "(^|[[:space:]])${PLUGIN_ID}([[:space:]]|$)"; then
+    # Consume all rows so pipefail sees the producer status, not a grep-induced SIGPIPE.
+    if "$QWEN_BIN" extensions list 2>/dev/null | grep -cE "(^|[[:space:]])${PLUGIN_ID}([[:space:]]|$)" >/dev/null; then
         field "plugin install"      "installed (${PLUGIN_ID})"
     else
         field "plugin install"      "not installed"

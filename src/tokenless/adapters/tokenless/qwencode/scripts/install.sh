@@ -75,7 +75,8 @@ fi
 # Idempotent: unlink first if already linked, then link again.
 # `qwen extensions list` may not reliably show link state, so we
 # always re-link to ensure the latest version is active.
-if "$QWEN_BIN" extensions list 2>/dev/null | grep -qE "(^|[[:space:]])${EXTENSION_NAME}([[:space:]]|$)"; then
+# Consume all rows so pipefail sees the producer status, not a grep-induced SIGPIPE.
+if "$QWEN_BIN" extensions list 2>/dev/null | grep -cE "(^|[[:space:]])${EXTENSION_NAME}([[:space:]]|$)" >/dev/null; then
     echo "[${COMPONENT}] extension '${EXTENSION_NAME}' already registered, re-linking..."
     if ! "$QWEN_BIN" extensions uninstall "$EXTENSION_NAME" 2>/dev/null; then
         echo "[${COMPONENT}] WARNING: qwen extensions uninstall failed (non-fatal, will re-link)"
@@ -87,7 +88,7 @@ echo "[${COMPONENT}] linking extension from ${PLUGIN_SRC}..."
     || { echo "[${COMPONENT}] ERROR: qwen extensions link failed" >&2; exit 1; }
 
 # Verify the extension was registered.
-if "$QWEN_BIN" extensions list 2>/dev/null | grep -qE "(^|[[:space:]])${EXTENSION_NAME}([[:space:]]|$)"; then
+if "$QWEN_BIN" extensions list 2>/dev/null | grep -cE "(^|[[:space:]])${EXTENSION_NAME}([[:space:]]|$)" >/dev/null; then
     echo "[${COMPONENT}] ${AGENT} plugin installed and linked via qwen CLI."
 else
     echo "[${COMPONENT}] WARNING: extension '${EXTENSION_NAME}' may not be visible in extensions list yet."

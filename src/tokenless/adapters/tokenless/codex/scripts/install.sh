@@ -138,7 +138,8 @@ cat > "$AGENTS_DIR/marketplace.json" <<JSON
 JSON
 
 # 2c. Register marketplace (idempotent — remove first if exists)
-if "$CODEX_BIN" plugin marketplace list 2>/dev/null | grep -q "^${MARKETPLACE_NAME}[[:space:]]"; then
+# Consume all rows so pipefail sees the producer status, not a grep-induced SIGPIPE.
+if "$CODEX_BIN" plugin marketplace list 2>/dev/null | grep -c "^${MARKETPLACE_NAME}[[:space:]]" >/dev/null; then
     "$CODEX_BIN" plugin marketplace remove "$MARKETPLACE_NAME" 2>/dev/null || true
 fi
 echo "[tokenless] Registering marketplace '${MARKETPLACE_NAME}'..."
