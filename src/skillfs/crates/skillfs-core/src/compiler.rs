@@ -71,17 +71,22 @@ fn has_conditional_blocks(content: &str) -> bool {
         || content.contains("<!-- @endif -->")
 }
 
+struct ConditionalFrame {
+    active: bool,
+    seen_else: bool,
+}
+
 /// Compile content that contains `<!-- @if -->` / `<!-- @else -->` / `<!-- @endif -->` blocks.
 ///
 /// Algorithm:
-/// - Maintain a stack `emit_at_depth: Vec<bool>` starting with `[true]`.
+/// - Maintain one active-state and else-seen frame per conditional depth.
 /// - On `@if expr`: push `eval(expr)` when the parent scope is active, else push `false`.
 /// - On `@else`: toggle the top entry **only** when all parent entries are `true`.
 /// - On `@endif`: pop the top entry.
 /// - Emit a line only when all stack entries are `true`.
 ///
 /// If the directive structure does not balance — an `@if` left open at
-/// end-of-input, or a stray `@else`/`@endif` with no enclosing `@if` — the
+/// end-of-input, a repeated `@else`, or a stray `@else`/`@endif` — the
 /// input is an unexpected state under `compile`'s contract ("Never fails;
 /// returns original content on any unexpected state") and the original
 /// content is returned unchanged. Suppressing to end-of-file on an unclosed
@@ -90,7 +95,10 @@ fn has_conditional_blocks(content: &str) -> bool {
 fn compile_conditional(content: &str, env: &EnvironmentProfile) -> String {
     let mut output = String::with_capacity(content.len());
     // Depth 0 = root level, always emit.
-    let mut emit_at_depth: Vec<bool> = vec![true];
+    let mut emit_at_depth = vec![ConditionalFrame {
+        active: true,
+        seen_else: false,
+    }];
     // Set when the directive structure is unbalanced; checked at the end so
     // the fallback decision covers both stray directives seen mid-input and
     // a depth stack that never returned to 1.
@@ -102,9 +110,12 @@ fn compile_conditional(content: &str, env: &EnvironmentProfile) -> String {
 
         if let Some(expr) = parse_if_directive(trimmed) {
             // Push: active iff parent scope is active AND condition true.
-            let parent_active = emit_at_depth.iter().all(|&e| e);
+            let parent_active = emit_at_depth.iter().all(|frame| frame.active);
             let condition = parent_active && evaluate_expr(expr, env);
-            emit_at_depth.push(condition);
+            emit_at_depth.push(ConditionalFrame {
+                active: condition,
+                seen_else: false,
+            });
             continue;
         }
 
@@ -112,10 +123,15 @@ fn compile_conditional(content: &str, env: &EnvironmentProfile) -> String {
             if emit_at_depth.len() > 1 {
                 // Toggle only when all parent depths are true.
                 let len = emit_at_depth.len();
-                let parent_active = emit_at_depth[..len - 1].iter().all(|&e| e);
-                if parent_active {
-                    let last = emit_at_depth.last_mut().unwrap();
-                    *last = !*last;
+                let parent_active = emit_at_depth[..len - 1].iter().all(|frame| frame.active);
+                let frame = &mut emit_at_depth[len - 1];
+                if frame.seen_else {
+                    structural_anomaly = true;
+                } else {
+                    frame.seen_else = true;
+                    if parent_active {
+                        frame.active = !frame.active;
+                    }
                 }
             } else {
                 // @else with no enclosing @if.
@@ -137,7 +153,7 @@ fn compile_conditional(content: &str, env: &EnvironmentProfile) -> String {
         // Emit the line when all depth conditions are satisfied, with its own
         // terminator: directive lines are dropped, but the surviving lines
         // keep the file's line endings.
-        if emit_at_depth.iter().all(|&e| e) {
+        if emit_at_depth.iter().all(|frame| frame.active) {
             output.push_str(body);
             output.push_str(terminator);
         }
@@ -1794,5 +1810,63 @@ Run: pip install requests
         let content = "---\r\nname: x\r\n---\r\n<!-- @if os == darwin -->\r\nDarwin body.\r\n<!-- @endif -->\r\n";
         let expected = "---\r\nname: x\r\n---\r\nDarwin body.\r\n";
         assert_eq!(compile(content, &env), expected);
+    }
+}
+
+#[cfg(test)]
+mod duplicate_else_tests {
+    use super::compile;
+    use crate::env::{EnvironmentProfile, OsKind};
+    use std::collections::{HashMap, HashSet};
+
+    fn linux() -> EnvironmentProfile {
+        EnvironmentProfile {
+            os: OsKind::Linux,
+            available_commands: HashSet::from(["uv".to_string()]),
+            env_vars: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn duplicate_else_preserves_a_true_branch_document() {
+        let content = "Header\n<!-- @if os == linux -->\nA\n<!-- @else -->\nB\n<!-- @else -->\nC\n<!-- @endif -->\nTail\n";
+        assert_eq!(compile(content, &linux()), content);
+    }
+
+    #[test]
+    fn duplicate_else_preserves_a_false_branch_document() {
+        let content =
+            "<!-- @if os == darwin -->\nA\n<!-- @else -->\nB\n<!-- @else -->\nC\n<!-- @endif -->\n";
+        assert_eq!(compile(content, &linux()), content);
+    }
+
+    #[test]
+    fn duplicate_else_is_invalid_inside_an_inactive_parent() {
+        let content = "<!-- @if os == darwin -->\n<!-- @if os == linux -->\nA\n<!-- @else -->\nB\n<!-- @else -->\nC\n<!-- @endif -->\n<!-- @endif -->\nTail\n";
+        assert_eq!(compile(content, &linux()), content);
+    }
+
+    #[test]
+    fn duplicate_else_preserves_crlf_and_the_unterminated_tail() {
+        let content = "<!-- @if os == linux -->\r\nA\r\n<!-- @else -->\r\nB\r\n<!-- @else -->\r\nC\r\n<!-- @endif -->\r\npip install requests";
+        assert_eq!(compile(content, &linux()), content);
+    }
+
+    #[test]
+    fn triple_else_does_not_restore_validity() {
+        let content = "<!-- @if os == linux -->\nA\n<!-- @else -->\nB\n<!-- @else -->\nC\n<!-- @else -->\nD\n<!-- @endif -->\n";
+        assert_eq!(compile(content, &linux()), content);
+    }
+
+    #[test]
+    fn one_else_in_each_nested_block_remains_valid() {
+        let content = "<!-- @if os == linux -->\n<!-- @if os == darwin -->\nA\n<!-- @else -->\nB\n<!-- @endif -->\n<!-- @else -->\nC\n<!-- @endif -->\n";
+        assert_eq!(compile(content, &linux()), "B\n");
+    }
+
+    #[test]
+    fn sibling_blocks_may_each_have_an_else() {
+        let content = "<!-- @if os == linux -->\nA\n<!-- @else -->\nB\n<!-- @endif -->\n<!-- @if os == darwin -->\nC\n<!-- @else -->\nD\n<!-- @endif -->\n";
+        assert_eq!(compile(content, &linux()), "A\nD\n");
     }
 }
