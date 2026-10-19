@@ -54,13 +54,13 @@ pub(crate) fn clean_terminal(text: &str) -> String {
 }
 
 /// Byte length of the SGR sequence at the start of `s`, or `None` when `s`
-/// does not begin with one. Parameter bytes are digits and `;`, per ECMA-48
-/// SGR; anything else disqualifies the sequence so it stays verbatim.
+/// does not begin with one. SGR parameters use digits, `;` separators, and
+/// `:` subparameter separators; anything else leaves the sequence verbatim.
 fn sgr_sequence_len(s: &str) -> Option<usize> {
     let body = s.strip_prefix("\x1b[")?;
     let params = body
         .bytes()
-        .take_while(|b| b.is_ascii_digit() || *b == b';')
+        .take_while(|b| b.is_ascii_digit() || matches!(*b, b';' | b':'))
         .count();
     (body.as_bytes().get(params) == Some(&b'm')).then_some(2 + params + 1)
 }

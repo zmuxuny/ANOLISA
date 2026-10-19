@@ -98,3 +98,32 @@ fn is_idempotent() {
     // Only colour left: everything else survived the first pass.
     assert_eq!(once, "Build\nstep 1\rstep 2\r\n⠙\n█░░\n\u{1b}]0;t\u{7}tail\nplain\n");
 }
+
+#[test]
+fn strips_sgr_colon_subparameters() {
+    // ncurses xterm-direct uses colon-delimited RGB subparameters, including
+    // an empty colour-space identifier. Underline variants use them too.
+    for parameters in [
+        "38:2::255:0:0",
+        "48:2:0:0:255",
+        "4:3",
+        "1;38:2::255:0:0;4:3",
+    ] {
+        let text = format!("before\u{1b}[{parameters}m彩色 output\u{1b}[0mafter\n");
+        let cleaned = clean_terminal(&text);
+        assert_eq!(cleaned, "before彩色 outputafter\n", "{parameters}");
+        assert_eq!(clean_terminal(&cleaned), cleaned);
+    }
+}
+
+#[test]
+fn keeps_non_sgr_colon_controls_verbatim() {
+    for text in [
+        "\u{1b}[38:2::255:0:0",
+        "\u{1b}[38:2::255:0:0Ktext",
+        "\u{1b}[?38:2::255:0:0mtext",
+        "\u{1b}]8;;https://example.com:443/path\u{1b}\\link\u{1b}]8;;\u{1b}\\",
+    ] {
+        assert_eq!(clean_terminal(text), text);
+    }
+}
