@@ -364,7 +364,7 @@ def main() -> int:
     privileged = os.geteuid() != 0 and not args.no_sudo
     if privileged and not shutil.which("sudo"):
         raise RuntimeError("sudo is required; --no-sudo requires eBPF capabilities")
-    config = json.loads(args.config.expanduser().read_text())
+    config = json.loads(args.config.expanduser().read_text(encoding="utf-8"))
     if config.get("features", {}).get("sqlite_storage", {}).get("enabled", True) is False:
         raise RuntimeError("capture validation requires features.sqlite_storage.enabled=true")
     config["cmdline"] = {
@@ -513,14 +513,14 @@ def main() -> int:
                     )
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError, Interrupted) as error:
         exit_code = 128 + error.signum if isinstance(error, Interrupted) else 1
-        (output / "run-error.txt").write_text(str(error) + "\n")
+        (output / "run-error.txt").write_text(str(error) + "\n", encoding="utf-8")
     finally:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         try:
             inputs.close()
         except RuntimeError as error:
-            (output / "run-error.txt").write_text(str(error) + "\n")
+            (output / "run-error.txt").write_text(str(error) + "\n", encoding="utf-8")
             exit_code = exit_code or 1
         if not report(output, sources):
             exit_code = exit_code or 1

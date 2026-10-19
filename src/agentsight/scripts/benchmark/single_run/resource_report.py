@@ -13,7 +13,7 @@ from benchmark_stats import numeric, percentile
 
 def read_json(path: Path) -> dict[str, Any]:
     """Read an optional completed artifact; absent artifacts remain unverified."""
-    return json.loads(path.read_text()) if path.exists() else {}
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
 def resource_stats(rows: list[dict[str, str]], start: float, end: float) -> dict[str, Any]:
@@ -306,17 +306,19 @@ def report(output: Path, sources: dict[str, dict[str, Any]]) -> bool:
                 lines.append(f"{label} connection evictions: {run['connection_evictions']:.0f}")
     lines.append(f"Result: {'VALID' if valid else 'INVALID; do not infer a resource improvement'}")
     if error_file.exists():
-        lines.append(f"Error: {error_file.read_text().strip()}")
+        lines.append(f"Error: {error_file.read_text(encoding='utf-8').strip()}")
     for label, run in runs.items():
         if run["error"]:
             lines.append(f"{label} error: {run['error']}")
             for name in ("trace.log", "runner.log", "worker.log"):
                 log = output / label / name
                 if name in run["error"] and log.exists():
-                    lines.extend(log.read_text(errors="replace").splitlines()[-4:])
+                    lines.extend(
+                        log.read_text(encoding="utf-8", errors="replace").splitlines()[-4:]
+                    )
     lines.append(f"Artifacts: {output}")
     text = "\n".join(lines) + "\n"
-    (output / "resource-report.txt").write_text(text)
+    (output / "resource-report.txt").write_text(text, encoding="utf-8")
     (output / "resource-summary.json").write_text(
         json.dumps(
             {
@@ -331,7 +333,8 @@ def report(output: Path, sources: dict[str, dict[str, Any]]) -> bool:
             },
             indent=2,
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     print(text, end="", flush=True)
     return valid
