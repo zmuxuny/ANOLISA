@@ -1192,6 +1192,9 @@ class OpenClawExternalAgent(BaseAgent):
 
     @staticmethod
     def _result_exit_code(result: Any) -> int:
+        # Harbor's ExecResult uses return_code; retain legacy result spellings.
+        if hasattr(result, "return_code"):
+            return int(getattr(result, "return_code"))
         if hasattr(result, "exit_code"):
             return int(getattr(result, "exit_code"))
         if hasattr(result, "returncode"):
