@@ -67,6 +67,22 @@ if bash "$DETECT_SH" >/dev/null; then
 else
     fail "detect did not recognize the installed plugin"
 fi
+
+# The selected executable is a path, including when command -v finds it.
+SPACED_BIN="$SANDBOX/cli bin with spaces"
+mkdir -p "$SPACED_BIN"
+cp "$FAKE_BIN/opencode" "$SPACED_BIN/opencode"
+if OPENCODE_BIN="$SPACED_BIN/opencode" bash "$DETECT_SH" >/dev/null; then
+    pass "detect probes an explicit executable path containing spaces"
+else
+    fail "detect split the explicit executable path"
+fi
+if OPENCODE_BIN= PATH="$SPACED_BIN:$PATH" bash "$DETECT_SH" >/dev/null; then
+    pass "detect probes a PATH-discovered executable containing spaces"
+else
+    fail "detect split the PATH-discovered executable path"
+fi
+
 if bash "$INSTALL_SH" >/dev/null; then
     pass "OpenCode plugin installation is idempotent"
 else
