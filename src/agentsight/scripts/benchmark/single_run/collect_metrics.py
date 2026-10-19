@@ -125,11 +125,16 @@ def fd_count(pid: int) -> int:
 def socket_count(pid: int) -> int:
     """Count socket descriptors owned by a process."""
     try:
-        return sum(
-            1
-            for fd in Path(f"/proc/{pid}/fd").iterdir()
-            if fd.is_symlink() and os.readlink(fd).startswith("socket:")
-        )
+        count = 0
+        for fd in Path(f"/proc/{pid}/fd").iterdir():
+            try:
+                if fd.is_symlink() and os.readlink(fd).startswith("socket:"):
+                    count += 1
+            except OSError:
+                # A descriptor can close after enumeration or the symlink
+                # check. Keep the other live sockets in this best-effort sample.
+                continue
+        return count
     except OSError:
         return 0
 
