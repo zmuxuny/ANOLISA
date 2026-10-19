@@ -54,6 +54,11 @@ die() {
 
 while (($# > 0)); do
 	case "$1" in
+	--mode | --timeout | --mountpoint | --file)
+		(($# >= 2)) || die "$EX_CONFIG" "$1 requires a value"
+		;;
+	esac
+	case "$1" in
 	--mode)
 		MODE="${2:-}"
 		shift 2
