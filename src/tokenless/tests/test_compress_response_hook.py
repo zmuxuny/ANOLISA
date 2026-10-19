@@ -947,6 +947,51 @@ class TestClaudeVersionCacheHardening(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
         shutil.rmtree(self.isolated_home, ignore_errors=True)
 
+    def _write_cache(self, payload: bytes, *, with_key: bool = True) -> bytes:
+        cache_dir = os.path.join(self.isolated_home, ".tokenless")
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        if with_key:
+            st = os.stat(self.mock_claude)
+            key = f"{self.mock_claude}:{int(st.st_mtime)}:{st.st_size}\n"
+            payload = key.encode() + payload
+        with open(os.path.join(cache_dir, ".claude-version"), "wb") as handle:
+            handle.write(payload)
+        return payload
+
+    def _run_with_cache(self) -> dict:
+        return _run_hook(
+            {"tool_name": "Bash", "tool_response": _make_large_json_payload()},
+            agent_id="claude-code",
+            mock_tokenless_path=self.mock_bin,
+            isolated_home=self.isolated_home,
+        )
+
+    def test_corrupt_cache_is_reprobed_and_repaired(self) -> None:
+        for payload, with_key in ((b"\xff", False), (b"", True), (b"unknown", True)):
+            with self.subTest(payload=payload):
+                self._write_cache(payload, with_key=with_key)
+                result = self._run_with_cache()
+                self.assertNotIn("_subprocess_error", result, result)
+                self.assertIn("updatedToolOutput", result.get("hookSpecificOutput", {}))
+                cache = os.path.join(self.isolated_home, ".tokenless", ".claude-version")
+                with open(cache, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read().splitlines()[1], "2.1.210")
+
+    def test_valid_cache_does_not_require_a_working_probe(self) -> None:
+        self.mock_claude = _create_broken_mock_claude(self.tmpdir, "exit-nonzero")
+        original = self._write_cache(b"2.1.210")
+        result = self._run_with_cache()
+        self.assertNotIn("_subprocess_error", result, result)
+        self.assertIn("updatedToolOutput", result.get("hookSpecificOutput", {}))
+        cache = os.path.join(self.isolated_home, ".tokenless", ".claude-version")
+        with open(cache, "rb") as handle:
+            self.assertEqual(handle.read(), original)
+
+    def test_corrupt_cache_and_failed_probe_still_pass_through(self) -> None:
+        self.mock_claude = _create_broken_mock_claude(self.tmpdir, "exit-nonzero")
+        self._write_cache(b"\xff", with_key=False)
+        self.assertEqual(self._run_with_cache(), {})
+
     def test_version_cache_is_0600_inside_a_0700_dir(self):
         result = _run_hook(
             {

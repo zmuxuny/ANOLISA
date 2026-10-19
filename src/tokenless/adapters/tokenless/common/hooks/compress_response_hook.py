@@ -184,11 +184,13 @@ def _cached_claude_version(claude_bin: str) -> tuple | None:
         cache_key = claude_bin
 
     try:
-        with open(_CLAUDE_VERSION_CACHE) as f:
+        with open(_CLAUDE_VERSION_CACHE, encoding="utf-8") as f:
             key, _, ver_str = f.read().strip().partition("\n")
         if key == cache_key:
-            return parse_version(ver_str)
-    except OSError:
+            version = parse_version(ver_str)
+            if version is not None:
+                return version
+    except (OSError, UnicodeError):
         pass
 
     try:
