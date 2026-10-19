@@ -39,7 +39,9 @@ def summarize_h2load(path: Path | None) -> dict[str, Any]:
         text,
     )
     finished = re.search(r"finished in\s+\S+,\s+([0-9.]+) req/s", text)
-    timing = re.search(r"time for request:\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)", text)
+    timing = re.search(
+        r"^[ \t]*(time for request|request)[ \t]*:[ \t]*(.+)$", text, re.MULTILINE
+    )
     if requests:
         result["available"] = True
         result["requests"] = int(requests.group(1))
@@ -48,17 +50,15 @@ def summarize_h2load(path: Path | None) -> dict[str, Any]:
     if finished:
         result["throughput"] = float(finished.group(1))
     if timing:
-        minimum, maximum, average = (
-            duration_ms(timing.group(index)) for index in (1, 2, 3)
+        values = timing.group(2).split()
+        # New h2load releases shorten the row label and add percentile columns
+        # before the mean; the old third column is still the mean, not p50.
+        columns = (
+            ("min", "max", "avg")
+            if timing.group(1) == "time for request"
+            else ("min", "max", "p50", "p95", "p99", "avg")
         )
-        result["latency"] = {
-            "first": None,
-            "last": None,
-            "min": minimum,
-            "avg": average,
-            "p50": None,
-            "p95": None,
-            "p99": None,
-            "max": maximum,
-        }
+        if len(values) >= len(columns) + 1:  # Both layouts also include sd.
+            for column, value in zip(columns, values):
+                result["latency"][column] = duration_ms(value)
     return result
