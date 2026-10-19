@@ -330,7 +330,7 @@ fn split_sections(
             if let Some(name) = current_name.take() {
                 record_section(&mut sections, name, current_content, issues);
             }
-            current_name = Some(heading.trim().to_string());
+            current_name = Some(section_title(heading).to_string());
             current_content = String::new();
         } else if current_name.is_some() {
             current_content.push_str(line);
@@ -343,6 +343,21 @@ fn split_sections(
     }
 
     sections
+}
+
+/// Remove an optional CommonMark closing hash sequence from an H2 title.
+/// Only space/tab can separate or follow the sequence; literal or escaped
+/// hashes remain part of the title and cannot accidentally open a contract.
+fn section_title(heading: &str) -> &str {
+    let title = heading.trim_end_matches([' ', '\t']);
+    let before_hashes = title.trim_end_matches('#');
+    if before_hashes.len() < title.len()
+        && (before_hashes.is_empty() || before_hashes.ends_with([' ', '\t']))
+    {
+        before_hashes.trim()
+    } else {
+        heading.trim()
+    }
 }
 
 /// Opening fence of a markdown code block: three or more backticks or
