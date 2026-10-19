@@ -125,6 +125,68 @@ CFG_TEST_RE = re.compile(r"#\[cfg\(test\)\]")
 MOD_RE = re.compile(r"\bmod\s+\w+")
 
 
+RAW_STRING_RE = re.compile(r'(?:br|cr|r)(#*)"')
+CHAR_LITERAL_RE = re.compile(
+    r"'(?:[^'\\\r\n\t]|\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|[nrt0\\'\"]))'"
+)
+
+
+def code_only(text: str) -> str:
+    """Mask Rust comments and quoted literals, preserving positions and lines.
+
+    Braces and paths inside literals are data, not architecture dependencies.
+    Block comments nest; raw strings close only with their opening hash count.
+    A single quote is masked only for a complete character literal so lifetimes
+    and loop labels remain code. This is lexical filtering, not a Rust parser.
+    """
+    masked = list(text)
+    index = 0
+    while index < len(text):
+        start = index
+        if text.startswith("//", index):
+            end = text.find("\n", index + 2)
+            index = len(text) if end < 0 else end
+        elif text.startswith("/*", index):
+            depth = 1
+            index += 2
+            while index < len(text) and depth:
+                if text.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif text.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+        else:
+            raw = RAW_STRING_RE.match(text, index)
+            if raw and (
+                index == 0 or not (text[index - 1].isalnum() or text[index - 1] == "_")
+            ):
+                closing = '"' + raw.group(1)
+                end = text.find(closing, raw.end())
+                index = len(text) if end < 0 else end + len(closing)
+            elif text[index] == '"':
+                index += 1
+                while index < len(text):
+                    if text[index] == "\\":
+                        index = min(index + 2, len(text))
+                    elif text[index] == '"':
+                        index += 1
+                        break
+                    else:
+                        index += 1
+            elif text[index] == "'" and (char := CHAR_LITERAL_RE.match(text, index)):
+                index = char.end()
+            else:
+                index += 1
+                continue
+        for position in range(start, index):
+            if text[position] not in "\r\n":
+                masked[position] = " "
+    return "".join(masked)
+
+
 def source_module_for(rel_path: Path) -> str:
     """Derive the module name owning a source file.
 
@@ -202,7 +264,7 @@ def extract_imports(text: str):
       - Does not handle `use super::super::` cross-module references; code
         convention must enforce `use crate::` for cross-module imports.
     """
-    lines = text.splitlines()
+    lines = code_only(text).splitlines()
     in_test_block = False
     test_block_depth = 0  # brace depth at which the test block was opened
     depth = 0
