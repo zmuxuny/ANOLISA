@@ -155,10 +155,12 @@ _FALLBACK_SHELL_TOOLS = [
 def _load_tool_categories() -> dict:
     """Load tool categories from unified JSON file with validation."""
     try:
-        with open(_TOOL_CATEGORIES_PATH, "r") as f:
+        with open(_TOOL_CATEGORIES_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # Validate required structure
+        if not isinstance(data, dict):
+            raise ValueError("Tool categories must be a dict")
         required_layers = ["layer_1_skip", "layer_2_shell", "layer_3_api"]
         for layer in required_layers:
             if layer not in data:
@@ -172,9 +174,15 @@ def _load_tool_categories() -> dict:
                 raise ValueError(f"Layer {layer} missing 'tools' field")
             if not isinstance(data[layer]["tools"], list):
                 raise ValueError(f"Layer {layer}.tools must be a list")
+            if not all(isinstance(tool, str) for tool in data[layer]["tools"]):
+                raise ValueError(f"Layer {layer}.tools must contain only strings")
+
+        for layer in ("layer_2_shell", "layer_3_api"):
+            if not isinstance(data[layer].get("thresholds", {}), dict):
+                raise ValueError(f"Layer {layer}.thresholds must be a dict")
 
         return data
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+    except (OSError, ValueError) as e:
         print(f"Warning: Failed to load tool_categories.json: {e}", file=sys.stderr)
         # Fallback to hardcoded safe sets so content-retrieval tools are
         # never accidentally compressed even if the JSON is unavailable.

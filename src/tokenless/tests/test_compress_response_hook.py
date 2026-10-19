@@ -26,6 +26,7 @@ import tempfile
 import textwrap
 import types
 import unittest
+from typing import Optional
 from unittest import mock
 
 
@@ -288,6 +289,91 @@ def _run_hook(
 
 
 _needs_py39 = sys.version_info < (3, 9)
+
+
+@unittest.skipIf(_needs_py39, "hook_utils requires Python 3.9+")
+class TestCategoryConfigFallback(unittest.TestCase):
+    def _import_categories(self, config: Optional[bytes], *, directory: bool = False):
+        hooks_dir = os.path.join(
+            os.path.dirname(__file__), os.pardir,
+            "adapters", "tokenless", "common", "hooks",
+        )
+        with tempfile.TemporaryDirectory() as root:
+            shutil.copyfile(
+                os.path.join(hooks_dir, "hook_utils.py"),
+                os.path.join(root, "hook_utils.py"),
+            )
+            path = os.path.join(root, "tool_categories.json")
+            if directory:
+                os.mkdir(path)
+            elif config is not None:
+                with open(path, "wb") as handle:
+                    handle.write(config)
+            proc = subprocess.run(
+                [sys.executable, "-B", "-c", textwrap.dedent("""\
+                    import json
+                    import hook_utils as hooks
+                    print(json.dumps({
+                        "skip": sorted(hooks.SKIP_TOOLS),
+                        "shell": sorted(hooks.SHELL_TOOLS),
+                        "shell_thresholds": hooks.get_thresholds("Bash"),
+                        "api_thresholds": hooks.get_thresholds("custom_api"),
+                    }))
+                """)],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout), proc.stderr
+
+    @staticmethod
+    def _valid_config() -> dict:
+        return {
+            "layer_1_skip": {"tools": ["Read", "custom_read"]},
+            "layer_2_shell": {"tools": ["Bash", "custom_shell"]},
+            "layer_3_api": {},
+        }
+
+    def test_invalid_category_shapes_use_safe_defaults(self) -> None:
+        invalid = [None, [], "categories", 42, True, {}]
+        for layer in ("layer_1_skip", "layer_2_shell", "layer_3_api"):
+            invalid.append({**self._valid_config(), layer: None})
+        for layer in ("layer_1_skip", "layer_2_shell"):
+            for tools in (None, "Read", [{}], [[]], [None], [1]):
+                invalid.append({**self._valid_config(), layer: {"tools": tools}})
+        for layer in ("layer_2_shell", "layer_3_api"):
+            for thresholds in (None, [], "thresholds"):
+                config = self._valid_config()
+                config[layer]["thresholds"] = thresholds
+                invalid.append(config)
+        for config in invalid:
+            with self.subTest(config=config):
+                result, stderr = self._import_categories(json.dumps(config).encode())
+                self.assertIn("Read", result["skip"])
+                self.assertIn("Grep", result["skip"])
+                self.assertIn("Bash", result["shell"])
+                self.assertNotIn("custom_read", result["skip"])
+                self.assertEqual(result["shell_thresholds"], [65536, 128, 8])
+                self.assertEqual(result["api_thresholds"], [1048576, 65536, 32])
+                self.assertIn("Failed to load tool_categories.json", stderr)
+
+    def test_unavailable_or_undecodable_categories_use_safe_defaults(self) -> None:
+        for config, directory in ((None, False), (b"{", False), (b"\xff", False), (None, True)):
+            with self.subTest(config=config, directory=directory):
+                result, stderr = self._import_categories(config, directory=directory)
+                self.assertIn("Read", result["skip"])
+                self.assertIn("Bash", result["shell"])
+                self.assertIn("Failed to load tool_categories.json", stderr)
+
+    def test_valid_custom_categories_and_thresholds_are_preserved(self) -> None:
+        config = self._valid_config()
+        config["layer_2_shell"]["thresholds"] = {"max_depth": 12}
+        config["layer_3_api"]["thresholds"] = {"truncate_arrays_at": 100}
+        result, stderr = self._import_categories(json.dumps(config).encode())
+        self.assertEqual(result["skip"], ["Read", "custom_read"])
+        self.assertEqual(result["shell"], ["Bash", "custom_shell"])
+        self.assertEqual(result["shell_thresholds"], [65536, 128, 12])
+        self.assertEqual(result["api_thresholds"], [1048576, 100, 32])
+        self.assertEqual(stderr, "")
 
 
 @unittest.skipIf(_needs_py39, "hook_utils requires Python 3.9+")
