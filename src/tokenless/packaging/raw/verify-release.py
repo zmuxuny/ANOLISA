@@ -120,7 +120,8 @@ def _normalize_pep440(version: str) -> str:
     Normalization drops the separators around pre/post/dev segments, folds
     the long pre-release spellings (alpha/beta/preview/pre/c) into their
     single letters, lowercases the remainder and canonicalizes local-version
-    separators to dots -- exactly what str(packaging.version.Version) does,
+    separators to dots and numeric local segments to integer spelling --
+    exactly what str(packaging.version.Version) does,
     reproduced here for a stdlib-only environment. A version the grammar
     cannot parse is returned unchanged, so the caller falls back to exact
     string comparison, which is the only contract such a spelling ever had.
@@ -146,7 +147,10 @@ def _normalize_pep440(version: str) -> str:
     if match.group("dev") is not None:
         parts.append(f".dev{int(match.group('dev_n') or 0)}")
     if match.group("local") is not None:
-        local = ".".join(re.split(r"[-_.]", match.group("local").lower()))
+        segments = re.split(r"[-_.]", match.group("local").lower())
+        local = ".".join(
+            (segment.lstrip("0") or "0") if segment.isdigit() else segment for segment in segments
+        )
         parts.append(f"+{local}")
     return "".join(parts)
 
@@ -180,7 +184,7 @@ def _verify_requirements_references(relative: str, expected: str, text: str) -> 
     if unnormalized:
         raise SystemExit(
             f"ERROR: {relative} pins wheel filename version(s) {unnormalized} "
-            f"in a form pip rejects: wheel filenames must carry the PEP 440 "
+            f"that differ from Maturin's names: wheel filenames must carry the PEP 440 "
             f"normalized version ({normalized})"
         )
     # The release workflow creates the tag from the workspace version

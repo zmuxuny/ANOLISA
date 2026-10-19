@@ -124,6 +124,16 @@ class TestNormalizePep440(unittest.TestCase):
     def test_local_version_separators(self):
         self.assertEqual(_normalize_pep440("1.0.0+Ubuntu_1"), "1.0.0+ubuntu.1")
 
+    def test_numeric_local_segments_use_integer_spelling(self):
+        for cargo, wheel in (
+            ("0.9.0+001", "0.9.0+1"),
+            ("0.9.0+build.001", "0.9.0+build.1"),
+            ("0.9.0-rc.1+Build.001.000", "0.9.0rc1+build.1.0"),
+            ("0.9.0+001abc.abc001.0", "0.9.0+001abc.abc001.0"),
+        ):
+            with self.subTest(cargo=cargo):
+                self.assertEqual(_normalize_pep440(cargo), wheel)
+
     def test_unparseable_version_returned_unchanged(self):
         """Exotic Cargo tags fall back to exact-string comparison."""
         self.assertEqual(_normalize_pep440("0.9.0-rc.1-meta"), "0.9.0-rc.1-meta")
@@ -153,7 +163,7 @@ class TestRequirementsReferenceContract(unittest.TestCase):
         self.assert_rejects(
             "0.9.0-rc.1",
             _requirements_text("0.9.0-rc.1", "0.9.0-rc.1"),
-            "pip rejects",
+            "normalized version (0.9.0rc1)",
         )
 
     def test_version_drift_rejected(self):
@@ -167,6 +177,20 @@ class TestRequirementsReferenceContract(unittest.TestCase):
     def test_plain_release_unchanged(self):
         """A plain release keeps the exact single-spelling contract."""
         self.assert_accepts("9.8.7", _requirements_text("9.8.7", "9.8.7"))
+
+    def test_normalized_numeric_build_wheel_is_accepted(self):
+        # Maturin 1.15.0 emits build.1 for Cargo build.001. The tag retains 001.
+        self.assert_accepts(
+            "0.9.0+build.001",
+            _requirements_text("0.9.0+build.001", "0.9.0+build.1"),
+        )
+
+    def test_unnormalized_numeric_build_wheel_is_rejected(self):
+        self.assert_rejects(
+            "0.9.0+build.001",
+            _requirements_text("0.9.0+build.001", "0.9.0+build.001"),
+            "normalized version (0.9.0+build.1)",
+        )
 
     def test_unstamped_template_rejected(self):
         self.assert_rejects(
@@ -226,6 +250,11 @@ class TestWheelVersionHelper(unittest.TestCase):
         result = self.helper("9.8.7")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "9.8.7")
+
+    def test_numeric_build_segment_matches_wheel_spelling(self):
+        result = self.helper("0.9.0+build.001")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "0.9.0+build.1")
 
     def test_missing_argument_is_a_usage_error(self):
         """The stamping rule must never fall back to an empty filename."""
@@ -334,6 +363,11 @@ class TestStampedRequirementsPipeline(unittest.TestCase):
         text = self.assert_stamps_and_verifies("9.8.7", "9.8.7")
         self.assertEqual(text.count("/tokenless/v9.8.7/"), 3)
         self.assertEqual(text.count("anolisa_tokenless-9.8.7-cp311-abi3-"), 3)
+
+    def test_numeric_build_labels_keep_the_raw_tag_only(self):
+        text = self.assert_stamps_and_verifies("0.9.0+build.001", "0.9.0+build.1")
+        self.assertEqual(text.count("/tokenless/v0.9.0+build.001/"), 3)
+        self.assertEqual(text.count("anolisa_tokenless-0.9.0+build.1-cp311-abi3-"), 3)
 
 
 if __name__ == "__main__":
