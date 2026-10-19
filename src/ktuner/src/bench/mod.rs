@@ -202,13 +202,7 @@ fn bench_mem_latency() -> Result<BenchResult> {
         chain.swap(i, j);
     }
 
-    // Build linked list via index chain
-    let mut indices = vec![0usize; size];
-    let mut pos = 0;
-    for &next in &chain {
-        indices[pos] = next;
-        pos = next;
-    }
+    let indices = build_pointer_cycle(&chain);
 
     // Chase pointers
     let iterations = 2_000_000;
@@ -227,6 +221,19 @@ fn bench_mem_latency() -> Result<BenchResult> {
         value: ns_per_access,
         unit: "ns/access".to_string(),
     })
+}
+
+fn build_pointer_cycle(chain: &[usize]) -> Vec<usize> {
+    let mut indices = vec![0usize; chain.len()];
+    // The shuffled permutation must close into one cycle, including its prefix.
+    if let Some(&last) = chain.last() {
+        let mut pos = last;
+        for &next in chain {
+            indices[pos] = next;
+            pos = next;
+        }
+    }
+    indices
 }
 
 /// Scratch file path for an IO benchmark, unique to this process.
@@ -374,6 +381,66 @@ fn bench_net_latency() -> Result<BenchResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_single_pointer_cycle(chain: &[usize]) {
+        let indices = build_pointer_cycle(chain);
+        assert_eq!(indices.len(), chain.len());
+        for i in 0..chain.len() {
+            assert_eq!(indices[chain[i]], chain[(i + 1) % chain.len()]);
+        }
+        let mut visited = vec![false; chain.len()];
+        let mut pos = 0;
+        for _ in 0..chain.len() {
+            assert!(
+                !visited[pos],
+                "cycle repeated {pos} before visiting all nodes"
+            );
+            visited[pos] = true;
+            pos = indices[pos];
+        }
+        assert_eq!(pos, 0);
+        assert!(visited.iter().all(|&seen| seen));
+    }
+
+    #[test]
+    fn pointer_cycle_with_zero_first() {
+        assert_single_pointer_cycle(&[0, 3, 1, 2]);
+    }
+
+    #[test]
+    fn pointer_cycle_with_zero_in_middle() {
+        assert_single_pointer_cycle(&[3, 1, 0, 2]);
+    }
+
+    #[test]
+    fn pointer_cycle_with_zero_last() {
+        assert_single_pointer_cycle(&[3, 1, 2, 0]);
+    }
+
+    #[test]
+    fn pointer_cycle_with_single_node() {
+        assert_single_pointer_cycle(&[0]);
+    }
+
+    #[test]
+    fn pointer_cycle_with_empty_permutation() {
+        assert!(build_pointer_cycle(&[]).is_empty());
+    }
+
+    #[test]
+    fn pointer_cycle_covers_fixed_seed_permutations() {
+        for size in [2, 3, 16, 127, 4096] {
+            for mut seed in [0u64, 1, 42, u64::MAX] {
+                let mut chain: Vec<usize> = (0..size).collect();
+                for i in (1..size).rev() {
+                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    let j = (seed as usize) % (i + 1);
+                    chain.swap(i, j);
+                }
+                assert_single_pointer_cycle(&chain);
+            }
+        }
+    }
 
     #[test]
     fn remove_on_drop_guard_removes_the_file() {
