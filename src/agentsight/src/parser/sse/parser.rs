@@ -21,6 +21,15 @@ fn complete_lines(mut buffer: &[u8]) -> impl Iterator<Item = (&[u8], &[u8])> {
     })
 }
 
+// EventSource retry values are nonempty ASCII decimal strings, not signed
+// integers. Invalid or unrepresentable hints must leave earlier values intact.
+fn retry_hint(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse().ok()
+}
+
 /// SSE Parser - parses SSE stream data into events (legacy version)
 pub struct SSEParser;
 
@@ -59,10 +68,14 @@ impl SSEParser {
                 // Field with optional value (strip leading space if present)
                 let value = value.strip_prefix(' ').unwrap_or(value);
                 match field {
-                    "id" => current_event.id = Some(value.to_string()),
+                    "id" if !value.contains('\0') => current_event.id = Some(value.to_string()),
                     "event" => current_event.event = Some(value.to_string()),
                     "data" => data_lines.push(value.to_string()),
-                    "retry" => current_event.retry = value.parse().ok(),
+                    "retry" => {
+                        if let Some(retry) = retry_hint(value) {
+                            current_event.retry = Some(retry);
+                        }
+                    }
                     _ => {} // Unknown field, ignore per spec
                 }
             } else {
@@ -71,7 +84,6 @@ impl SSEParser {
                     "id" => current_event.id = Some(String::new()),
                     "event" => current_event.event = Some(String::new()),
                     "data" => data_lines.push(String::new()),
-                    "retry" => current_event.retry = Some(0),
                     _ => {} // Unknown field, ignore per spec
                 }
             }
@@ -192,7 +204,9 @@ impl SseParser {
                     line_start + field.len() + 1 + if has_space_after_colon { 1 } else { 0 };
 
                 match field {
-                    "id" => current_id = Some(value_stripped.to_string()),
+                    "id" if !value_stripped.contains('\0') => {
+                        current_id = Some(value_stripped.to_string())
+                    }
                     "event" => current_event = Some(value_stripped.to_string()),
                     "data" => {
                         if data_start.is_none() {
@@ -203,7 +217,11 @@ impl SseParser {
                         // expansion of any invalid UTF-8 inside the value.
                         data_parts.push(&line_bytes[value_start - line_start..]);
                     }
-                    "retry" => current_retry = value_stripped.parse().ok(),
+                    "retry" => {
+                        if let Some(retry) = retry_hint(value_stripped) {
+                            current_retry = Some(retry);
+                        }
+                    }
                     _ => {} // Unknown field, ignore per spec
                 }
             } else {
@@ -217,7 +235,6 @@ impl SseParser {
                         }
                         data_parts.push(&[]);
                     }
-                    "retry" => current_retry = Some(0),
                     _ => {} // Unknown field, ignore per spec
                 }
             }
