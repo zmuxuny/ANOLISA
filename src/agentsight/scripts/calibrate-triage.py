@@ -33,6 +33,19 @@ from pathlib import Path
 DEFAULT_MAX_AGENT_LEN = 2000
 
 
+def message_length(message):
+    """Measure the supported ATIF string/content-part-array message union.
+
+    The Rust ATIF reader flattens content parts to compact JSON text before
+    triage counts characters. Counting array items instead can discard a long
+    multimodal answer as if it were a one-character response. Numeric extension
+    values keep Python JSON formatting, not cross-language canonicalization.
+    """
+    if isinstance(message, list):
+        message = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+    return len(message or "")
+
+
 def measure(atif_json):
     """Extract the structural triage inputs from one ATIF document."""
     doc = json.loads(atif_json)
@@ -42,7 +55,7 @@ def measure(atif_json):
         "n_user_turns": sum(1 for s in steps if s.get("source") == "user"),
         "n_tool_calls": sum(len(s.get("tool_calls") or []) for s in steps),
         "max_agent_len": max(
-            (len(s.get("message") or "") for s in steps if s.get("source") == "agent"),
+            (message_length(s.get("message")) for s in steps if s.get("source") == "agent"),
             default=0,
         ),
     }
