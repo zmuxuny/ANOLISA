@@ -97,7 +97,14 @@ esac
 # mountinfo field 5 is the mount point and field 9 the filesystem type. Matching
 # the type as well as the path prevents a bare shared-volume directory from
 # passing as a successful SkillFS mount.
-mount_fstype="$(awk -v target="$MOUNTPOINT" '
+# Match the kernel's escaped field without letting awk -v interpret backslashes.
+mountinfo_target="$MOUNTPOINT"
+mountinfo_target="${mountinfo_target//\\/\\134}"
+mountinfo_target="${mountinfo_target// /\\040}"
+mountinfo_target="${mountinfo_target//$'\t'/\\011}"
+mountinfo_target="${mountinfo_target//$'\n'/\\012}"
+mount_fstype="$(SKILLFS_MOUNTINFO_TARGET="$mountinfo_target" awk '
+	BEGIN { target = ENVIRON["SKILLFS_MOUNTINFO_TARGET"] }
 	$5 == target {
 		for (i = 7; i <= NF; i++) {
 			if ($i == "-") { print $(i + 1); exit }

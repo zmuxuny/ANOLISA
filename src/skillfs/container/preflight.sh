@@ -69,7 +69,15 @@ die() {
 # flags this deployment depends on.
 mountinfo_lines_for() {
 	local target="$1"
-	awk -v target="$target" '
+	local mountinfo_target
+	# Match the kernel's escaped field without letting awk -v interpret backslashes.
+	mountinfo_target="$target"
+	mountinfo_target="${mountinfo_target//\\/\\134}"
+	mountinfo_target="${mountinfo_target// /\\040}"
+	mountinfo_target="${mountinfo_target//$'\t'/\\011}"
+	mountinfo_target="${mountinfo_target//$'\n'/\\012}"
+	SKILLFS_MOUNTINFO_TARGET="$mountinfo_target" awk '
+		BEGIN { target = ENVIRON["SKILLFS_MOUNTINFO_TARGET"] }
 		{
 			# Fields: id parent major:minor root mountpoint opts... - fstype src super
 			if ($5 == target) { print $0 }
@@ -87,14 +95,13 @@ is_mounted() {
 # "-" separator, so the filesystem type is the field after that separator rather
 # than a fixed column.
 mount_fstype_for() {
-	local target="$1"
-	awk -v target="$target" '
-		$5 == target {
+	mountinfo_lines_for "$1" | awk '
+		{
 			for (i = 7; i <= NF; i++) {
 				if ($i == "-") { print $(i + 1); exit }
 			}
 		}
-	' /proc/self/mountinfo 2>/dev/null
+	'
 }
 
 # Report whether the mountpoint is a dead FUSE endpoint. `stat` on a mountpoint
