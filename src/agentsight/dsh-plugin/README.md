@@ -29,6 +29,7 @@ dsh --profile web --patch ./src/agentsight/dsh-plugin/cordis.patch.yml
 ```bash
 pnpm install
 pnpm run build
+pnpm test
 ```
 
 ## License

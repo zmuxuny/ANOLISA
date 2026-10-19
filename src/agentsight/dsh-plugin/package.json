@@ -11,7 +11,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepare": "tsc"
+    "prepare": "tsc",
+    "test": "tsc && node --test test/*.test.mjs"
   },
   "dsh": {
     "bundle": {
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-tools": ">=0.1.0-rc.2 <0.2.0",
+    "@types/node": "^22.20.5",
     "typescript": "^5.5.0"
   },
   "engines": {
