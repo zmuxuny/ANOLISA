@@ -37,6 +37,15 @@ def interrupted(signum: int, _: object) -> None:
     raise Interrupted(signum)
 
 
+def check_port_available(port: int) -> None:
+    """Check whether the benchmark server can bind the configured local port."""
+    with socket.socket() as check:
+        # Match BenchmarkHTTPServer: the previous A/B run may leave closed
+        # connections in TIME_WAIT, which must not look like a live listener.
+        check.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        check.bind(("127.0.0.1", port))
+
+
 def write_json(path: Path, value: Any) -> None:
     """Publish state atomically so the parent can read a worker PID safely."""
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -469,8 +478,7 @@ def main() -> int:
             inputs.build(source, run_logged, cache)
         write_json(output / "inputs.json", sources)
         for label, source in sources.items():
-            with socket.socket() as check:
-                check.bind(("127.0.0.1", args.port))
+            check_port_available(args.port)
             if privileged:
                 subprocess.run(["sudo", "-v"], check=True)
             directory = output / label
