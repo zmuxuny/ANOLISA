@@ -7,6 +7,7 @@ import argparse
 import gzip
 import json
 import logging
+import math
 import sqlite3
 import time
 from collections.abc import Iterable
@@ -539,8 +540,15 @@ def main() -> int:
         raise SystemExit(f"AgentSight database does not exist: {args.db}")
     if not 0 <= args.min_completeness <= 1:
         raise SystemExit("min-completeness must be between 0 and 1")
-    if args.wait_seconds < 0 or args.poll_interval <= 0:
-        raise SystemExit("wait-seconds must be non-negative and poll-interval positive")
+    if (
+        not math.isfinite(args.wait_seconds)
+        or not math.isfinite(args.poll_interval)
+        or args.wait_seconds < 0
+        or args.poll_interval <= 0
+    ):
+        raise SystemExit(
+            "wait-seconds must be finite and non-negative and poll-interval finite and positive"
+        )
     if args.since_ns is not None and args.since_ns < 0:
         raise SystemExit("since-ns must be non-negative")
     if args.completion_marker:
