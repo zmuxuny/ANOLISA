@@ -297,7 +297,11 @@ class OpenClawExternalAgent(BaseAgent):
         # Stale entries from a previous run (e.g. ``custom/...``) would
         # cause ``Model override ... is not allowed for agent "main"``.
         if self.model_name:
-            defaults.setdefault("model", {})["primary"] = self.model_name
+            # OpenClaw accepts either a model string or a primary/fallbacks object.
+            if isinstance(defaults.get("model"), str):
+                defaults["model"] = {"primary": self.model_name}
+            else:
+                defaults.setdefault("model", {})["primary"] = self.model_name
             allowed = defaults.setdefault("models", {})
             allowed[self.model_name] = allowed.get(self.model_name, {})
 
