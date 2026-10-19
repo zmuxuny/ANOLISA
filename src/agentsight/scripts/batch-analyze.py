@@ -312,13 +312,14 @@ def find_conversation_files(dirs: List[Path], min_size: int = 1024) -> List[Path
             if "subagent" in str(f):
                 continue
             try:
-                if f.stat().st_size >= min_size:
-                    files.append(f)
+                metadata = f.stat()
+                if metadata.st_size >= min_size:
+                    files.append((f, metadata.st_mtime))
             except OSError:
                 continue
-    # Sort by modification time (newest first)
-    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    return files
+    # Reuse the snapshot: sessions can disappear or become unreadable mid-scan.
+    files.sort(key=lambda item: item[1], reverse=True)
+    return [path for path, _ in files]
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
