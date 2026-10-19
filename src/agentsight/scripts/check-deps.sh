@@ -74,9 +74,12 @@ check_pkg() {
     elif [ "$PM" = "dpkg" ]; then
         local dpkg_name
         dpkg_name=$(pkg_dpkg_name "$rpm_pkg")
-        if dpkg -s "$dpkg_name" &>/dev/null 2>&1; then
+        local metadata
+        # A successful status query also includes removed or unconfigured packages.
+        if metadata=$(dpkg -s "$dpkg_name" 2>/dev/null) &&
+            grep -E '^Status: [^ ]+ ok installed$' <<< "$metadata" >/dev/null; then
             local ver
-            ver=$(dpkg -s "$dpkg_name" 2>/dev/null | grep '^Version:' | awk '{print $2}')
+            ver=$(awk '/^Version:/ {print $2}' <<< "$metadata")
             printf "  ${GREEN}OK${NC}    %s (dpkg: %s)\n" "$name" "$ver"
         else
             printf "  ${RED}MISS${NC} %s — install with: sudo ${PKG_MGR} install -y %s\n" "$name" "$dpkg_name"
