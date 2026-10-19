@@ -91,7 +91,7 @@ def load_config(config_path: str | None, args) -> dict:
 
     if config_path:
         cfg_file = Path(config_path)
-        with open(cfg_file) as f:
+        with open(cfg_file, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
         judge = cfg.get("judge", {})
@@ -160,7 +160,7 @@ def load_task_info(task_id: str, tasks_dir: str) -> dict:
     if not os.path.exists(yaml_path):
         return {"task_id": task_id, "error": f"task.yaml not found"}
 
-    with open(yaml_path) as f:
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     return {
@@ -180,7 +180,7 @@ def load_grading_result(trace_path: str) -> tuple:
     """Read jsonl trace and extract grading_result + trace_end."""
     grading = None
     trace_end = None
-    with open(trace_path) as f:
+    with open(trace_path, encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
             if obj.get("type") == "grading_result":
@@ -438,7 +438,7 @@ def main():
 
         out_name = trace_filename.replace(".jsonl", ".json")
         out_path = os.path.join(output_dir, out_name)
-        with open(out_path, "w") as f:
+        with open(out_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
 
         if i % 20 == 0:

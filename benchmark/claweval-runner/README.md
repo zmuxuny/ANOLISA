@@ -198,6 +198,10 @@ Core logic: `src/ce_runner/tool_injector.py`
 | `scripts/check_api_key.py` | Test API key connectivity |
 | `scripts/check_openclaw_env.py` | Inspect openclaw environment (`--fix` to cleanup) |
 
+Use UTF-8 for the YAML, JSON, and JSONL inputs to `analyze.py` and
+`generate_trial_reports.py`. Their generated JSON, CSV, and text report files
+also use UTF-8, independently of the system locale.
+
 ## Troubleshooting
 
 | Issue | Fix |

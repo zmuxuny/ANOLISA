@@ -198,6 +198,9 @@ ce-runner 使用 openclaw 原生的 MCP 运行时(stdio)向 agent 暴露任务�
 | `scripts/check_api_key.py` | 测试 API key 连通性 |
 | `scripts/check_openclaw_env.py` | 检查 openclaw 环境(`--fix` 可清理) |
 
+`analyze.py` 和 `generate_trial_reports.py` 的 YAML、JSON、JSONL 输入文件应使用 UTF-8。
+它们生成的 JSON、CSV 和文本报告文件也统一使用 UTF-8，不依赖系统区域设置。
+
 ## 故障排查
 
 | 问题 | 修复 |

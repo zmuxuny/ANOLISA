@@ -89,7 +89,7 @@ def load_config(config_path: str | None, cli_args) -> dict:
 
     if config_path:
         cfg_file = Path(config_path)
-        with open(cfg_file) as f:
+        with open(cfg_file, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
         judge = cfg.get("judge", {})
@@ -129,7 +129,7 @@ def load_task_info(task_id: str, tasks_dir: str) -> dict:
     yaml_path = os.path.join(tasks_dir, task_id, "task.yaml")
     if not os.path.exists(yaml_path):
         return {"task_id": task_id, "error": "task.yaml not found"}
-    with open(yaml_path) as f:
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return {
         "task_id": data.get("task_id", task_id),
@@ -147,7 +147,7 @@ def load_task_info(task_id: str, tasks_dir: str) -> dict:
 def load_grading_result(trace_path: str) -> tuple:
     grading = None
     trace_end = None
-    with open(trace_path) as f:
+    with open(trace_path, encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
             if obj.get("type") == "grading_result":
@@ -303,7 +303,7 @@ def generate_reports(trace_dir: str, tasks_dir: str, report_dir: str,
             report["failure_classification"] = classification
 
         out_path = os.path.join(report_dir, trace_filename.replace(".jsonl", ".json"))
-        with open(out_path, "w") as f:
+        with open(out_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
 
         if report["status"] == "succ":
@@ -463,7 +463,7 @@ def load_reports(report_dir: str) -> dict:
         return reports
     for rp in rd.glob("*.json"):
         try:
-            with open(rp) as f:
+            with open(rp, encoding="utf-8") as f:
                 report = json.load(f)
             trace_file = report.get("trace_file", "")
             if trace_file:
@@ -669,7 +669,7 @@ Examples:
         sys.exit(1)
 
     print(f"Step 2: Reading {batch_results_path}", file=sys.stderr)
-    with open(batch_results_path) as f:
+    with open(batch_results_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Step 3: Load reports and build summary
@@ -700,11 +700,11 @@ Examples:
     txt_path = os.path.join(output_dir, "summary.txt")
     csv_path = os.path.join(output_dir, "summary.csv")
     json_path = os.path.join(output_dir, "report.json")
-    with open(txt_path, "w") as f:
+    with open(txt_path, "w", encoding="utf-8") as f:
         f.write(summary_text)
-    with open(csv_path, "w") as f:
+    with open(csv_path, "w", encoding="utf-8") as f:
         f.write(summary_csv)
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(structured, f, indent=2, ensure_ascii=False)
 
     # Save batch_summary.json copy
