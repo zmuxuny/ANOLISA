@@ -39,6 +39,7 @@ set -euo pipefail
 log="$HOME/.qoder/stub.log"
 marker="$HOME/.qoder/native-tokenless-installed"
 printf '%s\n' "$*" >> "$log"
+printf '%s\n' "$0" >> "$HOME/.qoder/stub-binaries.log"
 
 if [ "${1:-}" = "plugins" ] && [ "${3:-}" = "--help" ]; then
     if [ "${2:-}" = "list" ] && [ "${QODER_STUB_MISSING_LIST:-0}" = "1" ]; then
@@ -289,6 +290,57 @@ if HOME="$FAKE_HOME" ANOLISA_ADAPTER_DIR="$ADAPTER_DIR" bash "$UNINSTALL_SH" >/d
 else
     fail "real uninstall stopped working after the dry-run coverage"
 fi
+
+# The version glob must expand without splitting or globbing the HOME prefix.
+# No unversioned qodercli is present in these homes, so it cannot mask failure.
+# An explicit rejecting PATH fallback prevents touching a developer's real CLI.
+guard_bin="$SANDBOX/guard-bin"
+mkdir -p "$guard_bin"
+printf '#!/bin/sh\nexit 99\n' > "$guard_bin/qodercli"
+chmod +x "$guard_bin/qodercli"
+for home_name in 'home with spaces' 'home[1]'; do
+    versioned_home="$SANDBOX/$home_name"
+    versioned_bin="$versioned_home/.qoder/bin/qodercli"
+    mkdir -p "$versioned_bin"
+    cp "$QODERCLI" "$versioned_bin/qodercli-2.9"
+    cp "$QODERCLI" "$versioned_bin/qodercli-2.10"
+    for selected_version in '' '2.9'; do
+        expected_version="${selected_version:-2.10}"
+        expected_binary="$versioned_bin/qodercli-$expected_version"
+        label="$home_name, version $expected_version"
+        binary_log="$versioned_home/.qoder/stub-binaries.log"
+        : > "$binary_log"
+        if PATH="$guard_bin:$PATH" HOME="$versioned_home" ANOLISA_QODER_VERSION="$selected_version" \
+                bash "$DETECT_SH" >/dev/null && \
+                [ "$(sort -u "$binary_log")" = "$expected_binary" ]; then
+            pass "detect selects the versioned CLI ($label)"
+        else
+            fail "detect missed or selected the wrong versioned CLI ($label)"
+        fi
+
+        : > "$binary_log"
+        if PATH="$guard_bin:$PATH" HOME="$versioned_home" ANOLISA_ADAPTER_DIR="$ADAPTER_DIR" \
+                ANOLISA_QODER_VERSION="$selected_version" bash "$INSTALL_SH" >/dev/null && \
+                [ -f "$versioned_home/.qoder/native-tokenless-installed" ] && \
+                [ "$(sort -u "$binary_log")" = "$expected_binary" ]; then
+            pass "install uses the versioned CLI ($label)"
+        else
+            fail "install missed or selected the wrong versioned CLI ($label)"
+        fi
+
+        # Pin cleanup independently, even when the old installer failed above.
+        touch "$versioned_home/.qoder/native-tokenless-installed"
+        : > "$binary_log"
+        if PATH="$guard_bin:$PATH" HOME="$versioned_home" ANOLISA_ADAPTER_DIR="$ADAPTER_DIR" \
+                ANOLISA_QODER_VERSION="$selected_version" bash "$UNINSTALL_SH" >/dev/null && \
+                [ ! -f "$versioned_home/.qoder/native-tokenless-installed" ] && \
+                [ "$(sort -u "$binary_log")" = "$expected_binary" ]; then
+            pass "uninstall uses the versioned CLI ($label)"
+        else
+            fail "uninstall missed or selected the wrong versioned CLI ($label)"
+        fi
+    done
+done
 
 echo ""
 echo "Qoder adapter tests: $PASS passed, $FAIL failed"

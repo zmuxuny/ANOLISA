@@ -10,10 +10,11 @@ PLUGIN_DIR="$ADAPTER_DIR/qoder"
 PLUGIN_JSON="$PLUGIN_DIR/.qoder-plugin/plugin.json"
 
 find_qodercli() {
-    local versioned_glob latest_versioned candidate
-    versioned_glob="$HOME/.qoder/bin/qodercli/qodercli-${ANOLISA_QODER_VERSION:-*}"
+    local version_pattern latest_versioned candidate
+    version_pattern="${ANOLISA_QODER_VERSION:-*}"
+    # Quote HOME separately: only the version pattern should undergo glob expansion.
     # shellcheck disable=SC2086 # Intentional version glob expansion.
-    latest_versioned="$(ls -d $versioned_glob 2>/dev/null | sort -V | tail -1 || true)"
+    latest_versioned="$(ls -d "$HOME/.qoder/bin/qodercli"/qodercli-$version_pattern 2>/dev/null | sort -V | tail -1 || true)"
 
     for candidate in "$latest_versioned" \
                      "$HOME/.qoder/bin/qodercli/qodercli" \
