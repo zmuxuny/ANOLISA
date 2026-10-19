@@ -85,7 +85,7 @@ def stop(_: int, __: object) -> None:
 
 
 def read_status(pid: int) -> dict[str, int]:
-    """Read numeric process fields from procfs."""
+    """Read numeric fields for a live process; exited procfs records are unavailable."""
     values: dict[str, int] = {}
     try:
         text = Path(f"/proc/{pid}/status").read_text(encoding="utf-8", errors="replace")
@@ -96,6 +96,10 @@ def read_status(pid: int) -> dict[str, int]:
         if not separator:
             continue
         first = remainder.strip().split(maxsplit=1)[0] if remainder.strip() else ""
+        # Exited children retain a procfs entry until their parent reaps them.
+        # Their remaining Threads field must not make survival checks pass.
+        if key == "State" and first in {"Z", "X", "x"}:
+            return {}
         if key in {"VmRSS", "VmHWM", "VmSize", "Threads"}:
             try:
                 values[key] = int(first)
