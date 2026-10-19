@@ -16,7 +16,7 @@ pub enum InterruptionType {
     NetworkTimeout,
     /// HTTP 502/503 or error containing "overloaded" / "service_unavailable"
     ServiceUnavailable,
-    /// finish_reason == "content_filter" from LLM safety policy
+    /// Provider safety/content blocking, including Gemini native finish reasons
     SafetyFilter,
     /// SSE stream ended without a normal finish_reason
     /// (stop/tool_calls/end_turn/tool_use/stop_sequence/pause_turn)

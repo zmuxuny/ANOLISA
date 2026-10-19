@@ -520,12 +520,13 @@ impl GenAIBuilder {
         fallback_finish_reason: Option<&str>,
     ) -> Option<Vec<OutputMessage>> {
         let (parts, sse_finish_reason) = Self::extract_parts_from_sse_body(body)?;
-        if parts.is_empty() {
-            return None;
-        }
-        // Prefer finish_reason from SSE, fall back to caller-supplied value
+        // A blocked completion may have no content: the terminal reason is
+        // still evidence needed by interruption detection.
         let finish_reason =
             sse_finish_reason.or_else(|| fallback_finish_reason.map(|s| s.to_string()));
+        if parts.is_empty() && finish_reason.is_none() {
+            return None;
+        }
         Some(vec![OutputMessage {
             role: "assistant".to_string(),
             parts,
@@ -546,7 +547,8 @@ impl GenAIBuilder {
     /// OpenAI shape yields nothing. `body` may be a JSON array of SSE chunks or
     /// a single JSON object (non-streaming native response).
     ///
-    /// Returns (parts, finish_reason) or None if no content found.
+    /// Returns (parts, finish_reason), or None when neither content nor a
+    /// terminal reason is present.
     pub(super) fn extract_parts_from_sse_body(
         body: &str,
     ) -> Option<(Vec<MessagePart>, Option<String>)> {
@@ -558,7 +560,7 @@ impl GenAIBuilder {
         };
 
         let (parts, finish_reason) = Self::merge_sse_chunks(&chunks);
-        if parts.is_empty() {
+        if parts.is_empty() && finish_reason.is_none() {
             return Self::extract_dashscope_native_parts(&chunks);
         }
         Some((parts, finish_reason))

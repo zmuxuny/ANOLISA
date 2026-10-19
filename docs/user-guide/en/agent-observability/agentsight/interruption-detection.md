@@ -42,13 +42,22 @@ needed to enable any of it.
 | `llm_error` | high | Fallback for any other HTTP status >= 400 |
 | `rate_limit` | medium | HTTP 429 or an error containing `rate_limit` |
 | `token_limit` | medium | `finish_reason = length` and output Tokens >= 95% of `max_tokens` |
-| `safety_filter` | medium | `finish_reason = content_filter` from the provider's safety policy |
+| `safety_filter` | medium | `finish_reason = content_filter`, or a Gemini safety/content-blocking terminal reason |
 | `slow_response` | medium | The call succeeded but took at least 120 seconds |
 | `tool_failure` | medium | A tool or function result reports failure |
 | `unauthorized_action` | medium | A tool call was denied by a permission system or sandbox (`EPERM`, `EACCES`, sandbox denial) |
 
 `llm_error` is the lowest-priority match, so a call that fits a specific type is never reported as
 the generic one.
+
+Gemini completions with `SAFETY`, `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT`,
+`SPII`, `IMAGE_SAFETY`, `IMAGE_PROHIBITED_CONTENT`, or `IMAGE_RECITATION` are
+reported as `safety_filter`. `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`,
+and `MALFORMED_RESPONSE` are reported as `state_machine_error`. These rules also
+apply when the terminal candidate contains no text or tool calls. The original
+finish reason is retained in the interruption detail; an HTTP authentication,
+rate-limit, timeout, or service-unavailable response keeps its higher-priority
+classification.
 
 ## Severity
 

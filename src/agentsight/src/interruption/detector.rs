@@ -409,7 +409,7 @@ impl InterruptionDetector {
     ///   4. ServiceUnavailable — 502/503
     ///   5. ContextOverflow — keywords in error body
     ///   5.5. ResourceExhaustion — quota/billing keywords
-    ///   6. SafetyFilter    — finish_reason == "content_filter"
+    ///   6. SafetyFilter    — provider safety/content blocking finish reason
     ///   6.5. StateMachineError — protocol/state keywords
     ///   7. LlmError        — generic HTTP >= 400 fallback
     ///   8. SseTruncated    — SSE stream ended prematurely
@@ -660,12 +660,29 @@ impl InterruptionDetector {
             return events;
         }
 
-        // ── 6. SafetyFilter (finish_reason == "content_filter") ───────────────
-        // 必须在 LlmError 之前检查：部分厂商对 content_filter 返回 200 + finish_reason
-        if finish_reason.is_some_and(|reason| reason.eq_ignore_ascii_case("content_filter")) {
+        // ── 6. SafetyFilter ─────────────────────────────────────────────────
+        // Gemini reports policy blocks as a terminal reason on HTTP 200,
+        // sometimes without content. They are not broken SSE connections.
+        let gemini_safety_finish = finish_reason.is_some_and(|reason| {
+            [
+                "SAFETY",
+                "RECITATION",
+                "BLOCKLIST",
+                "PROHIBITED_CONTENT",
+                "SPII",
+                "IMAGE_SAFETY",
+                "IMAGE_PROHIBITED_CONTENT",
+                "IMAGE_RECITATION",
+            ]
+            .iter()
+            .any(|known| reason.eq_ignore_ascii_case(known))
+        });
+        if finish_reason.is_some_and(|reason| reason.eq_ignore_ascii_case("content_filter"))
+            || gemini_safety_finish
+        {
             let detail = serde_json::json!({
                 "model": call.model,
-                "finish_reason": "content_filter",
+                "finish_reason": finish_reason,
                 "error": effective_error,
             });
             events.push(InterruptionEvent::new(
@@ -685,7 +702,17 @@ impl InterruptionDetector {
         // ── 6.5 State machine / protocol error ──────────────────────────────
         // Agent received a response that violates expected protocol state,
         // e.g. malformed response structure or invalid state transition.
-        let is_state_error = combined_error.contains("invalid state")
+        let gemini_protocol_finish = finish_reason.is_some_and(|reason| {
+            [
+                "MALFORMED_FUNCTION_CALL",
+                "UNEXPECTED_TOOL_CALL",
+                "MALFORMED_RESPONSE",
+            ]
+            .iter()
+            .any(|known| reason.eq_ignore_ascii_case(known))
+        });
+        let is_state_error = gemini_protocol_finish
+            || combined_error.contains("invalid state")
             || combined_error.contains("protocol error")
             || combined_error.contains("malformed")
             || combined_error.contains("unexpected response")
@@ -696,6 +723,7 @@ impl InterruptionDetector {
             let detail = serde_json::json!({
                 "model": call.model,
                 "status_code": status_code,
+                "finish_reason": finish_reason,
                 "error": effective_error,
             });
             events.push(InterruptionEvent::new(

@@ -107,7 +107,7 @@ impl GenAIBuilder {
                     .as_array()
                     .map_or_else(|| std::slice::from_ref(value), Vec::as_slice);
                 let (parts, finish) = Self::merge_sse_chunks(chunks);
-                let merged = if parts.is_empty() {
+                let merged = if parts.is_empty() && finish.is_none() {
                     Self::extract_dashscope_native_parts(chunks)
                 } else {
                     Some((parts, finish))

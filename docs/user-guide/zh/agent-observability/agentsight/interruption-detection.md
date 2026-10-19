@@ -40,12 +40,19 @@
 | `llm_error` | high | 其余 HTTP 状态码 >= 400 的兜底类型 |
 | `rate_limit` | medium | HTTP 429，或错误体含 `rate_limit` |
 | `token_limit` | medium | `finish_reason = length` 且输出 Token ≥ `max_tokens` 的 95% |
-| `safety_filter` | medium | 供应商安全策略返回 `finish_reason = content_filter` |
+| `safety_filter` | medium | 供应商返回 `finish_reason = content_filter`，或 Gemini 的安全/内容拦截终止原因 |
 | `slow_response` | medium | 调用成功但耗时 ≥ 120 秒 |
 | `tool_failure` | medium | 工具/函数返回失败结果 |
 | `unauthorized_action` | medium | 工具调用被权限系统或沙箱拒绝（`EPERM`、`EACCES`、sandbox denied） |
 
 `llm_error` 的匹配优先级最低，因此能命中具体类型的调用不会被归成这个泛化类型。
+
+Gemini 完成响应中的 `SAFETY`、`RECITATION`、`BLOCKLIST`、`PROHIBITED_CONTENT`、
+`SPII`、`IMAGE_SAFETY`、`IMAGE_PROHIBITED_CONTENT` 和 `IMAGE_RECITATION` 归为
+`safety_filter`；`MALFORMED_FUNCTION_CALL`、`UNEXPECTED_TOOL_CALL` 和
+`MALFORMED_RESPONSE` 归为 `state_machine_error`。即使终止候选中没有文本或工具调用，
+这些规则仍然适用。中断详情保留原始终止原因；HTTP 认证失败、限流、超时或服务不可用
+仍按更高优先级归类。
 
 ## 严重级别
 
