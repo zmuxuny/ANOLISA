@@ -113,7 +113,17 @@ def cached_diff(
     pathspecs: Sequence[str] = (),
 ) -> str:
     """Return the cached text diff for *work_dir*."""
-    args = ["diff", "--cached", "--no-color", "--no-ext-diff"]
+    # This diff is applied by the evaluator, not displayed to a human. Keep
+    # literal file contents and the a/b prefixes expected by patch filtering.
+    args = [
+        "diff",
+        "--cached",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+    ]
     if base_revision:
         args.append(base_revision)
     args.extend(["--", ".", *pathspecs])

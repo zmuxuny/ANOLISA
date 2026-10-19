@@ -142,6 +142,10 @@ swe-runner
 5. Extracts git diff from the workspace as `model_patch`.
 6. Writes per-instance results, `preds.json`, input manifests, and run metadata.
 
+Generated patches use literal file contents and fixed `a/`/`b/` path prefixes,
+regardless of Git text-conversion or display-prefix settings. Extraction does
+not change your Git configuration.
+
 ### Datasets
 
 `--subset` supports four built-in aliases:

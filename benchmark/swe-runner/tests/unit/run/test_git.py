@@ -96,6 +96,18 @@ def test_stage_all_and_cached_diff_use_high_level_git_commands() -> None:
 
     assert calls == [
         ("add", "-A"),
-        ("diff", "--cached", "--no-color", "--no-ext-diff", "base", "--", ".", ":(exclude)tests/**"),
+        (
+            "diff",
+            "--cached",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "base",
+            "--",
+            ".",
+            ":(exclude)tests/**",
+        ),
     ]
     assert result == "diff text"

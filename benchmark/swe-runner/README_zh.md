@@ -138,6 +138,9 @@ swe-runner
 5. 从工作区提取 git diff 作为 `model_patch`。
 6. 写入 per-instance result、`preds.json`、input manifest 和 run metadata。
 
+生成的 patch 使用文件原始内容和固定的 `a/`/`b/` 路径前缀，
+不受 Git 文本转换或展示前缀设置影响。提取过程不会修改 Git 配置。
+
 ### 数据集
 
 `--subset` 支持四个内置别名：
