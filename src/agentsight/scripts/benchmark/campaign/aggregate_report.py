@@ -327,9 +327,10 @@ def write_soak(results: Path, items: list[tuple[Path, dict[str, Any]]]) -> None:
             "| 版本 | 时长 | RSS First/Last/Avg/P99/Max | RSS slope/5m increase | "
             "FD First/Last/Max/Slope | Thread First/Last/Max/Slope | "
             "Socket First/Last/Max/Slope | Channel/Event/Pending/Cache max | "
+            "Completion queue count/bytes max | "
             "Drop/Trace completeness | 结论 |"
         ),
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     runs = scenario_runs(items, "soak")
     for _, run in runs:
@@ -359,12 +360,14 @@ def write_soak(results: Path, items: list[tuple[Path, dict[str, Any]]]) -> None:
             f"{display(nested(summary, 'resources', 'event_channel_bytes', 'max'))}/"
             f"{display(nested(summary, 'resources', 'pending_genai_bytes', 'max'))}/"
             f"{display(nested(summary, 'resources', 'connection_cache_bytes', 'max'))} | "
+            f"{display(nested(summary, 'resources', 'completion_queue_count', 'max'))}/"
+            f"{display(nested(summary, 'resources', 'completion_queue_bytes', 'max'), ' bytes')} | "
             f"{ratio_display(nested(summary, 'drop_rate'))}/"
             f"{ratio_display(nested(summary, 'trace_completeness'))} | "
             f"{run['evaluation']['verdict']} |"
         )
     if not runs:
-        lines.append("| — | — | — | — | — | — | — | — | — | NOT EXECUTED |")
+        lines.append("| — | — | — | — | — | — | — | — | — | — | NOT EXECUTED |")
     (results / "soak-report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

@@ -275,3 +275,6 @@ bash scripts/benchmark/single_run/resource_run.sh \
 该协作式目标调度采集落库及 primary/GenAI 清理，必要时会增加投递延迟；负载生成、CPU 采样和有效性
 判断保持原口径。评估时同时查看 `metrics.csv` 的 `completion_queue_count` / `completion_queue_bytes`、
 探针丢事件和尾部排空；队列持续增长不能视为 CPU 优化成功。
+
+完成队列指标也会进入单次运行的 JSON/Markdown 资源汇总。
+长稳报告展示队列数量和字节数峰值；缺少采样时保持未知，不视为零。

@@ -273,3 +273,6 @@ paces capture persistence and primary/GenAI cleanup, increasing delivery latency
 It leaves workload generation, CPU sampling and validity checks unchanged. Inspect
 `completion_queue_count` / `completion_queue_bytes` in `metrics.csv`, probe drops and response drain
 alongside CPU/RSS; sustained queue growth is not an acceptable CPU improvement.
+
+Completion queue gauges also appear in the single-run JSON/Markdown resource summaries.
+The soak report includes queue count and byte peaks; missing gauge samples remain unknown, not zero.

@@ -32,6 +32,8 @@ RESOURCE_METRICS = (
     "event_channel_budget_bytes",
     "pending_genai_count",
     "pending_genai_bytes",
+    "completion_queue_count",
+    "completion_queue_bytes",
     "pending_connection_count",
     "pending_connection_bytes",
     "eviction_count",
@@ -446,6 +448,7 @@ def render_markdown(
         "event_channel_bytes": " bytes",
         "event_channel_budget_bytes": " bytes",
         "pending_genai_bytes": " bytes",
+        "completion_queue_bytes": " bytes",
         "pending_connection_bytes": " bytes",
     }
     resource_row_added = False
