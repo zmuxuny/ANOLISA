@@ -608,8 +608,24 @@ class OpenClawExternalAgent(BaseAgent):
         if not jsonl_files:
             return None
 
-        # Use the most recent session file (by mtime).
-        jsonl_path = max(jsonl_files, key=os.path.getmtime)
+        # A session can be rotated or removed between glob and stat. Token
+        # metadata is best-effort and must not fail an otherwise completed run.
+        candidates: list[tuple[float, str]] = []
+        for path in jsonl_files:
+            try:
+                candidates.append((os.path.getmtime(path), path))
+            except OSError:
+                self.logger.warning(
+                    "%s: failed to stat session file %s",
+                    _LOG_PREFIX,
+                    path,
+                    exc_info=True,
+                )
+        if not candidates:
+            return None
+
+        # Keep the sorted filename tie-breaker when mtimes are equal.
+        jsonl_path = max(candidates, key=lambda candidate: candidate[0])[1]
 
         rounds: list[dict[str, Any]] = []
         total_input = 0
