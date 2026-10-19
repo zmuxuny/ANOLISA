@@ -417,7 +417,18 @@ def main() -> int:
                     except ProcessLookupError:
                         pass
                     return SAFETY_EXIT_CODE
-            time.sleep(args.interval)
+            wait_seconds = args.interval
+            if args.duration > 0:
+                wait_seconds = min(
+                    wait_seconds, max(0.0, started + args.duration - time.monotonic())
+                )
+            wait_until = time.monotonic() + wait_seconds
+            while not STOP:
+                remaining = wait_until - time.monotonic()
+                if remaining <= 0:
+                    break
+                # Python retries interrupted sleeps; keep stop latency bounded.
+                time.sleep(min(0.1, remaining))
         # Include counters published while validation drains the capture queue,
         # including updates after the collector's last periodic sample.
         row, _, _ = sample(
