@@ -551,3 +551,57 @@ fn terminal_color_is_opt_in() {
     assert!(!format_diff_report(&report, false).contains("\u{1b}["));
     assert!(format_diff_report(&report, true).contains("\u{1b}["));
 }
+
+#[test]
+fn record_report_preserves_json_number_differences() {
+    for (before_number, after_number) in [
+        ("18446744073709551616", "18446744073709551617"),
+        ("0.123456789012345678901", "0.123456789012345678902"),
+        ("1e-400", "2e-400"),
+        ("0.0", "1e-400"),
+        ("1e-400", "0.0"),
+    ] {
+        let before = format!(r#"{{"value":{before_number}}}"#);
+        let after = format!(r#"{{"value":{after_number}}}"#);
+        let record = sample_record(
+            94,
+            OperationType::CompressResponse,
+            &before,
+            &after,
+            (20, 12),
+            None,
+            CompressionMode::Active,
+        );
+        let report = record_report(&record, 0);
+        let json = serde_json::to_value(&report).unwrap();
+        let diff = &json["chains"][0]["diff"];
+        assert!(
+            !diff["hunks"].as_array().unwrap().is_empty(),
+            "distinct numbers disappeared: {before_number} -> {after_number}: {diff}"
+        );
+        assert_eq!(diff["normalization"], "none", "{before_number}");
+        let lines = diff["hunks"][0]["lines"].as_array().unwrap();
+        assert!(lines.iter().any(|line| line["kind"] == "delete" && line["text"] == before));
+        assert!(lines.iter().any(|line| line["kind"] == "insert" && line["text"] == after));
+        let displayed = format_diff_report(&report, false);
+        assert!(displayed.contains(before_number));
+        assert!(displayed.contains(after_number));
+    }
+}
+
+#[test]
+fn record_report_still_normalizes_exact_json_numbers() {
+    let record = sample_record(
+        95,
+        OperationType::CompressResponse,
+        r#"{"value":1e3,"quoted":"0.123456789012345678901","escaped":"\"1e-400"}"#,
+        r#"{"value":1000.0,"quoted":"0.123456789012345678901","escaped":"\"1e-400"}"#,
+        (20, 12),
+        None,
+        CompressionMode::Active,
+    );
+    let json = serde_json::to_value(record_report(&record, 0)).unwrap();
+    let diff = &json["chains"][0]["diff"];
+    assert_eq!(diff["normalization"], "json");
+    assert!(diff["hunks"].as_array().unwrap().is_empty());
+}

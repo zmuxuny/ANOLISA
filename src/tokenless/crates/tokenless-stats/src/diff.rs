@@ -11,6 +11,7 @@ use std::fmt::Write as _;
 use chrono::{DateTime, Local};
 use serde::Serialize;
 use similar::{ChangeTag, TextDiff};
+use tokenless_protocol::json_numbers_are_exact;
 
 use crate::record::{CompressionMode, OperationType, StatsRecord};
 
@@ -635,11 +636,17 @@ fn build_content_diff(before: Option<&str>, after: Option<&str>, context: usize)
         serde_json::from_str::<serde_json::Value>(before),
         serde_json::from_str::<serde_json::Value>(after),
     ) {
-        (Ok(before_json), Ok(after_json)) => (
-            serde_json::to_string_pretty(&before_json).unwrap_or_else(|_| before.to_string()),
-            serde_json::to_string_pretty(&after_json).unwrap_or_else(|_| after.to_string()),
-            DiffNormalization::Json,
-        ),
+        // Pretty-printing must not round distinct numbers into the same value.
+        // Fall back to the original text if either side cannot round-trip exactly.
+        (Ok(before_json), Ok(after_json))
+            if json_numbers_are_exact(before) && json_numbers_are_exact(after) =>
+        {
+            (
+                serde_json::to_string_pretty(&before_json).unwrap_or_else(|_| before.to_string()),
+                serde_json::to_string_pretty(&after_json).unwrap_or_else(|_| after.to_string()),
+                DiffNormalization::Json,
+            )
+        }
         _ => (
             before.to_string(),
             after.to_string(),

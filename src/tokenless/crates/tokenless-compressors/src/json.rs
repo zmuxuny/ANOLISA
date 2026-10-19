@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 use tokenless_ccr::{
     RecoveryMethod, StashStore, StashWrite, recovery_instruction, truncation_suffix_for,
 };
-use tokenless_protocol::estimate_tokens;
+use tokenless_protocol::{estimate_tokens, json_numbers_are_exact};
 
 const LOSSLESS_MIN_SAVINGS_PERCENT: usize = 15;
 const RECORD_MIN_ITEMS: usize = 33;
@@ -331,81 +331,10 @@ fn parse_input(input: &str) -> Result<(String, Value, bool), JsonError> {
         return Ok((
             serde_json::to_string(&value)?,
             value,
-            numbers_are_exact(inner),
+            json_numbers_are_exact(inner),
         ));
     }
-    Ok((input.to_owned(), outer, numbers_are_exact(input)))
-}
-
-// Syntax is already validated by serde_json. Inspect number tokens outside
-// strings before any cleanup/reduction can discard their original spelling.
-fn numbers_are_exact(input: &str) -> bool {
-    let bytes = input.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'"' => {
-                index += 1;
-                while index < bytes.len() {
-                    match bytes[index] {
-                        b'\\' => index += 2,
-                        b'"' => {
-                            index += 1;
-                            break;
-                        }
-                        _ => index += 1,
-                    }
-                }
-            }
-            b'-' | b'0'..=b'9' => {
-                let start = index;
-                while index < bytes.len()
-                    && matches!(bytes[index], b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E')
-                {
-                    index += 1;
-                }
-                let literal = &input[start..index];
-                let Ok(number) = serde_json::from_str::<serde_json::Number>(literal) else {
-                    return false;
-                };
-                let Some(expected) = decimal_value(literal) else {
-                    return false;
-                };
-                if decimal_value(&number.to_string()).as_ref() != Some(&expected) {
-                    return false;
-                }
-            }
-            _ => index += 1,
-        }
-    }
-    true
-}
-
-// Compare decimal values without floating-point conversion. Equivalent JSON
-// spellings (1e3, 1000.0) share a sign, zero-stripped coefficient and exponent.
-fn decimal_value(literal: &str) -> Option<(bool, String, i64)> {
-    let (negative, literal) = match literal.strip_prefix('-') {
-        Some(literal) => (true, literal),
-        None => (false, literal),
-    };
-    let (mantissa, exponent) = match literal.split_once(['e', 'E']) {
-        Some((mantissa, exponent)) => (mantissa, exponent.parse::<i64>().ok()?),
-        None => (literal, 0),
-    };
-    let fractional = mantissa
-        .split_once('.')
-        .map_or(0, |(_, fractional)| fractional.len());
-    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
-    let digits = digits.trim_start_matches('0');
-    if digits.is_empty() {
-        return Some((negative, String::new(), 0));
-    }
-    let coefficient = digits.trim_end_matches('0');
-    let trailing = i64::try_from(digits.len() - coefficient.len()).ok()?;
-    let exponent = exponent
-        .checked_sub(i64::try_from(fractional).ok()?)?
-        .checked_add(trailing)?;
-    Some((negative, coefficient.to_owned(), exponent))
+    Ok((input.to_owned(), outer, json_numbers_are_exact(input)))
 }
 
 fn restore_top_level_shape(original: &Value, transformed: Value) -> Value {

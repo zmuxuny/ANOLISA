@@ -4,6 +4,10 @@
 //! [`RequestEnvelope`] and [`ResponseEnvelope`] exist only for CLI and other
 //! cross-process transports.
 
+mod json;
+
+pub use json::json_numbers_are_exact;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
