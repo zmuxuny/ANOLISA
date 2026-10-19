@@ -461,7 +461,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
     if args.chunks < 1 or args.chunk_bytes < 1 or args.chunk_delay_ms < 0:
         raise SystemExit(
             "chunks, chunk-bytes, and chunk-delay-ms must be non-negative (chunks/bytes > 0)"
