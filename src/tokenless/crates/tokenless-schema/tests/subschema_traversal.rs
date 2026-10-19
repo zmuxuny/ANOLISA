@@ -1,0 +1,182 @@
+//! Only schema-valued positions are compressed; instance data stays literal.
+
+use serde_json::{Value, json};
+use tokenless_schema::SchemaCompressor;
+
+fn annotated() -> Value {
+    json!({
+        "type": "string", "minLength": 2,
+        "description": "Detailed field instructions. ".repeat(20),
+        "title": "Field label", "examples": ["valid"]
+    })
+}
+
+fn compressor() -> SchemaCompressor {
+    SchemaCompressor::new()
+        .with_func_desc_max_len(80)
+        .with_param_desc_max_len(80)
+}
+
+#[test]
+fn schema_maps_preserve_names_and_compress_values() {
+    for keyword in [
+        "properties",
+        "patternProperties",
+        "$defs",
+        "definitions",
+        "dependentSchemas",
+    ] {
+        // A definition/property named after an annotation is still a schema.
+        let input = json!({keyword: {"description": annotated(), "title": false}});
+        let output = compressor().compress(&input);
+        assert_eq!(
+            output[keyword]["description"],
+            compressor().compress(&annotated()),
+            "{keyword}"
+        );
+        assert_eq!(output[keyword]["title"], false, "{keyword}");
+    }
+}
+
+#[test]
+fn single_schema_positions_preserve_constraints() {
+    for keyword in [
+        "items",
+        "additionalItems",
+        "additionalProperties",
+        "contains",
+        "not",
+        "if",
+        "then",
+        "else",
+        "propertyNames",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+        "contentSchema",
+    ] {
+        let input = json!({keyword: annotated()});
+        let output = compressor().compress(&input);
+        assert_eq!(
+            output[keyword],
+            compressor().compress(&annotated()),
+            "{keyword}"
+        );
+        assert_eq!(
+            compressor().compress(&json!({keyword: false})),
+            json!({keyword: false})
+        );
+    }
+}
+
+#[test]
+fn array_schema_positions_include_both_tuple_dialects() {
+    for keyword in ["anyOf", "oneOf", "allOf", "prefixItems", "items"] {
+        let input = json!({keyword: [annotated(), true, false]});
+        let output = compressor().compress(&input);
+        assert_eq!(
+            output[keyword][0],
+            compressor().compress(&annotated()),
+            "{keyword}"
+        );
+        assert_eq!(output[keyword][1], true);
+        assert_eq!(output[keyword][2], false);
+    }
+}
+
+#[test]
+fn legacy_dependencies_distinguish_schemas_from_property_lists() {
+    let input = json!({"dependencies": {
+        "schema": annotated(), "names": ["description", "title", "examples"], "boolean": false
+    }});
+    let output = compressor().compress(&input);
+    assert_eq!(
+        output["dependencies"]["schema"],
+        compressor().compress(&annotated())
+    );
+    assert_eq!(
+        output["dependencies"]["names"],
+        input["dependencies"]["names"]
+    );
+    assert_eq!(output["dependencies"]["boolean"], false);
+}
+
+#[test]
+fn instance_data_and_unknown_keywords_are_not_schema_positions() {
+    let input = json!({
+        "default": annotated(), "const": annotated(), "enum": [annotated()],
+        "examples": [annotated()], "x-custom": {"$defs": {"value": annotated()}},
+        "required": ["title", "description", "examples"]
+    });
+    assert_eq!(
+        compressor().with_drop_examples(false).compress(&input),
+        input
+    );
+}
+
+#[test]
+fn added_positions_obey_depth_limits_and_annotation_options() {
+    let input = json!({"$defs": {"outer": {
+        "title": "Keep by configuration", "examples": [1],
+        "description": "Outer schema instructions. ".repeat(20), "$defs": {"inner": annotated()}
+    }}});
+    let output = compressor()
+        .with_max_depth(1)
+        .with_drop_titles(false)
+        .with_drop_examples(false)
+        .compress(&input);
+    let outer = &output["$defs"]["outer"];
+    assert!(outer["description"].as_str().unwrap().len() <= 80);
+    assert_eq!(outer["title"], input["$defs"]["outer"]["title"]);
+    assert_eq!(outer["examples"], input["$defs"]["outer"]["examples"]);
+    assert_eq!(outer["$defs"], input["$defs"]["outer"]["$defs"]);
+}
+
+#[test]
+fn recursive_references_remain_literal() {
+    let input = json!({"$defs": {"node": {
+        "description": "Recursive node instructions. ".repeat(20),
+        "properties": {"next": {"$ref": "#/$defs/node"}},
+        "additionalProperties": false
+    }}, "$ref": "#/$defs/node"});
+    let output = compressor().compress(&input);
+    assert!(
+        output["$defs"]["node"]["description"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 80
+    );
+    assert_eq!(output["$ref"], input["$ref"]);
+    assert_eq!(
+        output["$defs"]["node"]["properties"],
+        input["$defs"]["node"]["properties"]
+    );
+    assert_eq!(output["$defs"]["node"]["additionalProperties"], false);
+}
+
+#[test]
+fn pydantic_nested_model_definitions_are_compressed() {
+    // Generated by Pydantic 2.13.4 Query.model_json_schema(), with a list of
+    // Range models whose annotated integer fields live only under $defs.
+    let input: Value = serde_json::from_str(include_str!("fixtures/pydantic_ranges.json")).unwrap();
+    let output = compressor().compress(&input);
+    for field in ["start", "stop"] {
+        let before = &input["$defs"]["Range"]["properties"][field];
+        let after = &output["$defs"]["Range"]["properties"][field];
+        assert!(
+            after["description"].as_str().unwrap().len() <= 80,
+            "{field}"
+        );
+        assert_eq!(after["minimum"], before["minimum"]);
+        assert_eq!(after["type"], before["type"]);
+    }
+    assert_eq!(
+        output["properties"]["ranges"]["items"],
+        input["properties"]["ranges"]["items"]
+    );
+    assert_eq!(
+        output["$defs"]["Range"]["required"],
+        input["$defs"]["Range"]["required"]
+    );
+    assert_eq!(output["$defs"]["Range"]["additionalProperties"], false);
+}

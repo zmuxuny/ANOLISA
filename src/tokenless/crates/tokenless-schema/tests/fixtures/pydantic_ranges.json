@@ -1,0 +1,41 @@
+{
+  "$defs": {
+    "Range": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "description": "Inclusive zero-based start position in the ordered search results. Use zero to begin at the first result. The position refers to the result set before any requested projection is applied, so selecting fewer fields does not change which records belong to this range.",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "stop": {
+          "description": "Exclusive zero-based stop position in the ordered search results. The record at this position is not included. The caller should supply a stop larger than start, and may use the total result count to select all remaining results without requesting an additional page.",
+          "minimum": 1,
+          "title": "Stop",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "stop"
+      ],
+      "title": "Range",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ranges": {
+      "items": {
+        "$ref": "#/$defs/Range"
+      },
+      "title": "Ranges",
+      "type": "array"
+    }
+  },
+  "required": [
+    "ranges"
+  ],
+  "title": "Query",
+  "type": "object"
+}

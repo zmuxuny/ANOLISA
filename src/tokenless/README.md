@@ -350,6 +350,11 @@ for the request/response contract and an executable example.
 
 ### compress-schema
 
+Descriptions and optional titles/examples are compressed inside standard JSON
+Schema positions, including `$defs`/`definitions`, conditional schemas, and
+tuple items. `$ref` values are preserved without resolution; instance data in
+`default`, `const`, and `enum` is not traversed.
+
 Compress a single tool schema:
 
 ```bash

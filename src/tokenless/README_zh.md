@@ -230,6 +230,10 @@ PostTool 请求才启用恢复能力。压缩 Marker 会提示模型通过已有
 
 ### Schema 压缩 CLI
 
+描述及可选移除的标题/示例也会在标准 JSON Schema 子结构中压缩，包括
+`$defs`/`definitions`、条件 Schema 和元组元素。`$ref` 原样保留且不解析；
+`default`、`const`、`enum` 中的实例数据不会被递归处理。
+
 `compress-schema` 支持单个工具定义、工具定义 JSON 数组，以及包含顶层
 `tools` 数组的完整请求对象。处理完整请求对象时不传 `--batch`；其中的 OpenAI
 Wrapper、Gemini `functionDeclarations` 工具对象及裸 Function Calling 定义会被压缩，

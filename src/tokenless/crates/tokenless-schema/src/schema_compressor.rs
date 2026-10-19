@@ -386,48 +386,60 @@ impl SchemaCompressor {
             obj.insert("description".to_string(), Value::String(compressed));
         }
 
-        // Recursively compress properties (for object types)
-        #[allow(clippy::collapsible_if)]
-        if let Some(properties) = obj.get_mut("properties") {
-            if let Some(props_obj) = properties.as_object_mut() {
-                for (_key, prop_schema) in props_obj.iter_mut() {
-                    self.compress_json_schema(prop_schema, depth + 1);
+        // Descend only through schema-valued keywords. Objects in defaults,
+        // examples, enums, and extension fields are instance data, not schemas.
+        // Map keys may themselves be named "description" or "title".
+        for keyword in [
+            "properties",
+            "patternProperties",
+            "$defs",
+            "definitions",
+            "dependentSchemas",
+            "dependencies",
+        ] {
+            if let Some(schemas) = obj.get_mut(keyword).and_then(Value::as_object_mut) {
+                for schema in schemas.values_mut() {
+                    // Legacy dependencies also accepts property-name arrays;
+                    // compress_json_schema leaves those non-objects untouched.
+                    self.compress_json_schema(schema, depth + 1);
                 }
             }
         }
 
-        // Recursively compress items (for array types)
+        for keyword in ["anyOf", "oneOf", "allOf", "prefixItems"] {
+            if let Some(schemas) = obj.get_mut(keyword).and_then(Value::as_array_mut) {
+                for schema in schemas {
+                    self.compress_json_schema(schema, depth + 1);
+                }
+            }
+        }
+
+        // Drafts before 2020-12 also permit a tuple of schemas under items.
         if let Some(items) = obj.get_mut("items") {
-            self.compress_json_schema(items, depth + 1);
-        }
-
-        // Handle anyOf
-        #[allow(clippy::collapsible_if)]
-        if let Some(any_of) = obj.get_mut("anyOf") {
-            if let Some(arr) = any_of.as_array_mut() {
-                for item in arr.iter_mut() {
-                    self.compress_json_schema(item, depth + 1);
+            if let Some(schemas) = items.as_array_mut() {
+                for schema in schemas {
+                    self.compress_json_schema(schema, depth + 1);
                 }
+            } else {
+                self.compress_json_schema(items, depth + 1);
             }
         }
 
-        // Handle oneOf
-        #[allow(clippy::collapsible_if)]
-        if let Some(one_of) = obj.get_mut("oneOf") {
-            if let Some(arr) = one_of.as_array_mut() {
-                for item in arr.iter_mut() {
-                    self.compress_json_schema(item, depth + 1);
-                }
-            }
-        }
-
-        // Handle allOf
-        #[allow(clippy::collapsible_if)]
-        if let Some(all_of) = obj.get_mut("allOf") {
-            if let Some(arr) = all_of.as_array_mut() {
-                for item in arr.iter_mut() {
-                    self.compress_json_schema(item, depth + 1);
-                }
+        for keyword in [
+            "additionalItems",
+            "additionalProperties",
+            "contains",
+            "not",
+            "if",
+            "then",
+            "else",
+            "propertyNames",
+            "unevaluatedItems",
+            "unevaluatedProperties",
+            "contentSchema",
+        ] {
+            if let Some(schema) = obj.get_mut(keyword) {
+                self.compress_json_schema(schema, depth + 1);
             }
         }
     }
