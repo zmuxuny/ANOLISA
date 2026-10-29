@@ -112,7 +112,24 @@ anolisa adapter enable agent-memory openclaw
 anolisa adapter status agent-memory
 ```
 
-**前置条件**：`openclaw` CLI 在 `$PATH` 上。脚本缺失时输出明确日志并以 0 退出，安装 OpenClaw 后重跑即可。`yum remove agent-memory` 时 spec 的 `%preun` 自动调用 uninstall 脚本，配置不残留孤立项。
+**前置条件**：`openclaw` CLI 在 `$PATH` 上。安装脚本在 CLI 缺失时输出明确日志并以 0 退出，安装 OpenClaw 后重跑即可。
+
+通过独立脚本移除插件：
+
+```bash
+bash /usr/share/anolisa/adapters/agent-memory/openclaw/scripts/uninstall.sh
+```
+
+脚本调用 `openclaw plugins uninstall memory-anolisa --force`，由宿主处理配置目标和受管插件目录移除。
+它不会在宿主执行后重写 `openclaw.json`，因此不会给 `$include` 配置添加覆盖项，
+也不会在设置 `OPENCLAW_CONFIG_PATH` 时修改另一个配置文件。
+CLI 缺失时现在会在修改任何文件之前返回 1；此规则同样适用于旧脚本会手工清理的普通 JSON 配置。
+请恢复 CLI 后重试。如果 CLI 执行失败，脚本会传递其退出码，不再额外清理；
+OpenClaw 可能已完成部分变更，请先检查错误再重试。这不保证回滚。
+
+`ANOLISA_DRY_RUN=1` 会预览宿主命令或缺少 CLI 时的拒绝执行，返回 0 且不修改文件。
+RPM 的 `%preun` 会尽力调用脚本，脚本失败不会中止软件包移除。
+如果 OpenClaw 中仍注册着插件，请在移除软件包之前成功执行此脚本。
 
 执行 `anolisa adapter enable agent-memory openclaw` 或 agent-memory 的 OpenClaw `install.sh` 即同意插件声明的能力。两个入口仅在 `plugins install --help` 列出完整的 `--accept-capabilities` 参数时传递它，以兼容旧版宿主。运行 `install.sh` 时设置 `AGENT_MEMORY_ACCEPT_CAPABILITIES=0` 可拒绝授予同意——带门禁的宿主将拒绝安装，直至自行授予（例如交互式执行 `openclaw plugins install`）。
 
